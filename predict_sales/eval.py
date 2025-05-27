@@ -55,11 +55,10 @@ if __name__ == "__main__":
         print("사용법: python eval.py YYYYMM (예: python eval.py 2505)")
         sys.exit(1)
 
-    # 입력 파싱
     try:
         year_month = sys.argv[1]
-        year = int(year_month[:2]) + 2000  # 2505 → 2025
-        month = int(year_month[2:])        # 2505 → 5
+        year = int(year_month[:4])   # "2025"
+        month = int(year_month[4:])  # "01"
         if month < 1 or month > 12:
             raise ValueError("월은 1~12 사이여야 합니다.")
     except ValueError as e:
@@ -67,10 +66,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # 예측 모델 초기화
-    predictor = SalesPredictor(data_dir="/Users/linakorea/Project/python/predict_sales/data/")
+    predictor = SalesPredictor(data_dir="/Users/linakorea/Project/ai-project/predict_sales/data/")
     predictor.load_holidays()
     predictor.load_data()
-    predictor.calculate_actual_may()
     predictor.train()
 
     # 평가 수행
