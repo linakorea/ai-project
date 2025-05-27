@@ -26,7 +26,6 @@ class SalesPredictor:
         self.current_date = datetime.now() 
 
     def load_data(self):
-def load_data(self):
         """데이터 로드 및 전처리"""
         st.write(f"현재 작업 디렉토리 (os.getcwd()): `{os.getcwd()}`")
         
