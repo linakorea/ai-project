@@ -26,6 +26,57 @@ class SalesPredictor:
         self.current_date = datetime.now() 
 
     def load_data(self):
+def load_data(self):
+        """데이터 로드 및 전처리"""
+        st.write(f"현재 작업 디렉토리 (os.getcwd()): `{os.getcwd()}`")
+        
+        # self.data_dir이 "data/"라고 가정
+        absolute_data_dir = os.path.abspath(self.data_dir)
+        st.write(f"설정된 data_dir: `{self.data_dir}`")
+        st.write(f"data_dir의 절대 경로 (os.path.abspath): `{absolute_data_dir}`")
+
+        if not os.path.exists(absolute_data_dir):
+            st.error(f"오류: 데이터 디렉토리 '{absolute_data_dir}'를 찾을 수 없습니다.")
+            # 오류 메시지를 명확히 표시하고, 앱이 중단되도록 하여 문제 파악을 돕습니다.
+            st.stop() # Streamlit 앱 실행 중단
+        else:
+            st.success(f"데이터 디렉토리 '{absolute_data_dir}' 존재 확인!")
+
+        try:
+            # os.listdir()를 호출하기 전에 디렉토리 내용을 출력
+            st.write(f"'{absolute_data_dir}' 내용: {os.listdir(absolute_data_dir)}")
+            files = [f for f in os.listdir(absolute_data_dir) if f.endswith('.txt')] # 여기를 absolute_data_dir로 변경
+            st.write(f"찾은 .txt 파일: {files}") # 찾은 파일 목록 출력
+            
+        except Exception as e:
+            st.error(f"'{absolute_data_dir}' 디렉토리 목록 읽기 중 오류 발생: {e}")
+            st.stop() # 오류 발생 시 앱 실행 중단
+
+
+        dfs = []
+        if not files: # 파일을 찾지 못했을 때
+            st.error(f"오류: '{absolute_data_dir}'에서 '.txt' 파일을 찾을 수 없습니다. 파일 이름을 확인해주세요.")
+            raise ValueError(f"데이터 파일을 찾을 수 없습니다.") # 이 예외를 다시 발생시켜 스택 트레이스 확인
+
+        for file in files:
+            file_path = os.path.join(absolute_data_dir, file) # 여기도 absolute_data_dir로 변경
+            if os.path.exists(file_path):
+                df = pd.read_csv(file_path, sep='\t')
+                df['일자'] = pd.to_datetime(df['일자'])
+                dfs.append(df)
+            else:
+                st.warning(f"경고: 파일 '{file_path}'가 존재하지 않습니다. 건너뜁니다.")
+
+        if dfs:
+            self.data = pd.concat(dfs, ignore_index=True)
+        else:
+            # 이곳에 도달하면 파일은 있지만 로드되지 않은 것
+            st.error(f"오류: '{absolute_data_dir}'에서 유효한 데이터를 로드할 수 없습니다.")
+            raise ValueError("데이터 파일을 로드할 수 없습니다.")
+
+
+
+
         """데이터 로드 및 전처리"""
         # data_dir 내의 모든 txt 파일을 읽어옵니다.
         files = [f for f in os.listdir(self.data_dir) if f.endswith('.txt')]
