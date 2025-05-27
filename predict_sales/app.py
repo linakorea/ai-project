@@ -7,51 +7,70 @@ import json
 import numpy as np
 from calendar import monthrange
 
-# 데이터 디렉토리 설정
-# 로컬에서 실행할 때의 경로:
-# data_dir = "/Users/linakorea/Project/ai-project/predict_sales/data/"
-# Streamlit Cloud에 배포할 때는 상대 경로를 사용하는 것이 일반적입니다.
-data_dir = "data/" 
-
-# --- SalesPredictor 클래스 정의 (기존 코드와 동일) ---
+# --- SalesPredictor 클래스 정의 ---
 class SalesPredictor:
     def __init__(self, data_dir, target_sales=23549):
+        # 이제 data_dir은 외부에서 주입되는 완전한 절대 경로를 기대합니다.
         self.data_dir = data_dir
         self.target_sales = target_sales
         self.model_weekday = None
         self.model_weekend = None
         self.holidays = None
         self.data = None
-        self.current_month_actual = None 
-        self.current_date = datetime.now() 
+        self.current_month_actual = None
+        self.current_date = datetime.now()
 
     def load_data(self):
         """데이터 로드 및 전처리"""
-        # data_dir 내의 모든 txt 파일을 읽어옵니다.
-        files = [f for f in os.listdir(self.data_dir) if f.endswith('.txt')]
+        st.write(f"현재 작업 디렉토리 (os.getcwd()): `{os.getcwd()}`")
+        st.write(f"설정된 data_dir: `{self.data_dir}` (절대 경로로 간주)")
+
+        if not os.path.exists(self.data_dir):
+            st.error(f"오류: 데이터 디렉토리 '{self.data_dir}'를 찾을 수 없습니다. 경로를 확인해주세요.")
+            st.stop() # 디렉토리가 없으면 앱 중단
+        else:
+            st.success(f"데이터 디렉토리 '{self.data_dir}' 존재 확인!")
+
+        try:
+            # os.listdir()에 절대 경로를 직접 전달
+            dir_contents = os.listdir(self.data_dir)
+            st.write(f"'{self.data_dir}' 내용: {dir_contents}")
+            files = [f for f in dir_contents if f.endswith('.txt')]
+            st.write(f"찾은 .txt 파일: {files}")
+
+        except Exception as e:
+            st.error(f"'{self.data_dir}' 디렉토리 목록 읽기 중 오류 발생: {e}")
+            st.stop() # 오류 발생 시 앱 중단
+
+
         dfs = []
+        if not files: # .txt 파일을 하나도 찾지 못했을 때
+            st.error(f"오류: '{self.data_dir}'에서 '.txt' 파일을 찾을 수 없습니다. 파일 이름을 확인해주세요.")
+            raise ValueError(f"데이터 파일을 찾을 수 없습니다.")
+
         for file in files:
-            file_path = os.path.join(self.data_dir, file)
+            file_path = os.path.join(self.data_dir, file) # data_dir이 이미 절대 경로
             if os.path.exists(file_path):
                 df = pd.read_csv(file_path, sep='\t')
                 df['일자'] = pd.to_datetime(df['일자'])
                 dfs.append(df)
-        
+            else:
+                st.warning(f"경고: 파일 '{file_path}'가 존재하지 않습니다. 건너뜁니다.")
+
         if dfs:
             self.data = pd.concat(dfs, ignore_index=True)
-            self.data = self.data.sort_values('일자') # 날짜 기준으로 정렬 (필요시)
+            self.data = self.data.sort_values('일자') # 날짜 기준으로 정렬
         else:
-            raise ValueError(f"데이터 디렉토리 '{self.data_dir}'에서 '.txt' 파일을 찾을 수 없습니다.")
+            st.error(f"오류: '{self.data_dir}'에서 유효한 데이터를 로드할 수 없습니다.")
+            raise ValueError("데이터 파일을 로드할 수 없습니다.")
 
-        # 데이터 전처리
+        # 데이터 전처리 및 특징 추가 (기존과 동일)
         self.data['datetime'] = self.data['일자'] + pd.to_timedelta(self.data['시간대'], unit='h')
         self.data = self.data.sort_values('datetime')
-
-        # 특징 추가
         self.data['hour'] = self.data['datetime'].dt.hour
         self.data['dayofweek'] = self.data['datetime'].dt.dayofweek
         self.data['month'] = self.data['datetime'].dt.month
-        
+
         if self.holidays is not None and not self.holidays.empty:
             self.data['is_holiday'] = self.data['datetime'].dt.date.isin(self.holidays['ds'].dt.date).astype(int)
         else:
@@ -64,7 +83,9 @@ class SalesPredictor:
 
     def load_holidays(self):
         """공휴일 데이터 로드"""
+        # holidays_file도 절대 경로를 직접 사용하도록 변경
         holidays_file = os.path.join(self.data_dir, "holidays.json")
+        st.write(f"공휴일 파일 경로: `{holidays_file}`")
         try:
             with open(holidays_file) as f:
                 holidays_data = json.load(f)
@@ -77,20 +98,23 @@ class SalesPredictor:
         except FileNotFoundError:
             st.warning(f"경로: '{holidays_file}'에서 공휴일 파일을 찾을 수 없습니다. 공휴일 없이 진행합니다.")
             self.holidays = pd.DataFrame(columns=['holiday', 'ds', 'lower_window', 'upper_window'])
+        except json.JSONDecodeError:
+            st.error(f"오류: 공휴일 파일 '{holidays_file}'이 유효한 JSON 형식이 아닙니다.")
+            self.holidays = pd.DataFrame(columns=['holiday', 'ds', 'lower_window', 'upper_window'])
 
     def train(self):
         """주중/주말 모델 학습"""
         current_year = self.current_date.year
         current_month = self.current_date.month
-        
+
         training_data = self.data[
-            (self.data['datetime'].dt.year == current_year) & 
+            (self.data['datetime'].dt.year == current_year) &
             (self.data['datetime'].dt.month <= current_month)
         ]
-        
+
         if training_data.empty:
             training_data = self.data[
-                (self.data['datetime'].dt.month >= 1) & 
+                (self.data['datetime'].dt.month >= 1) &
                 (self.data['datetime'].dt.month <= 12)
             ]
 
@@ -136,22 +160,22 @@ class SalesPredictor:
         """현재 월의 실제 청약 건수 계산 (현재 날짜의 어제까지)"""
         current_year = self.current_date.year
         current_month = self.current_date.month
-        
+
         yesterday = self.current_date - timedelta(days=1)
-        
+
         current_month_data_until_yesterday = self.data[
-            (self.data['datetime'].dt.year == current_year) & 
-            (self.data['datetime'].dt.month == current_month) & 
+            (self.data['datetime'].dt.year == current_year) &
+            (self.data['datetime'].dt.month == current_month) &
             (self.data['datetime'].dt.date <= yesterday.date())
         ]
-        
+
         self.current_month_actual = current_month_data_until_yesterday['건수'].sum() if not current_month_data_until_yesterday.empty else 0
         st.info(f"현재 월({current_month}월) 실제 청약 건수 ({yesterday.strftime('%Y-%m-%d')}까지): {self.current_month_actual}건")
 
     def get_actual_data_for_date_and_hour(self, target_date, end_hour=23):
         """특정 날짜의 특정 시간까지의 실제 데이터 합계 반환"""
         actual_data = self.data[
-            (self.data['datetime'].dt.date == target_date) & 
+            (self.data['datetime'].dt.date == target_date) &
             (self.data['datetime'].dt.hour < end_hour)
         ]
         return actual_data['건수'].sum() if not actual_data.empty else 0
@@ -164,7 +188,7 @@ class SalesPredictor:
         future['hour'] = future['ds'].dt.hour
         future['dayofweek'] = future['ds'].dt.dayofweek
         future['month'] = future['ds'].dt.month
-        
+
         if self.holidays is not None and not self.holidays.empty:
             future['is_holiday'] = future['ds'].dt.date.isin(self.holidays['ds'].dt.date).astype(int)
         else:
@@ -178,7 +202,7 @@ class SalesPredictor:
 
         daily_predictions = []
         today_date_obj = self.current_date.date()
-        
+
         for date_iter in pd.date_range(start=start_date.date(), end=end_date.date(), freq='D'):
             if date_iter.date() == today_date_obj and today_full_day_estimated_sales is not None:
                 daily_predictions.append({
@@ -187,7 +211,7 @@ class SalesPredictor:
                     '데이터타입': '예측(오늘 전체)'
                 })
                 continue
-                
+
             if date_iter.date() < today_date_obj:
                 actual_sales = self.get_actual_data_for_date_and_hour(date_iter.date(), end_hour=24)
                 if actual_sales > 0:
@@ -197,11 +221,11 @@ class SalesPredictor:
                         '데이터타입': '실제'
                     })
                     continue
-            
+
             day_data = future[future['ds'].dt.date == date_iter.date()]
             if day_data.empty:
                 continue
-            
+
             if day_data['is_weekend'].iloc[0] == 1 and self.model_weekend is not None:
                 forecast_day = self.model_weekend.predict(day_data)
             elif day_data['is_weekend'].iloc[0] == 0 and self.model_weekday is not None:
@@ -215,7 +239,7 @@ class SalesPredictor:
                     '데이터타입': '예측(평균)'
                 })
                 continue
-                
+
             daily_total = forecast_day['yhat'].round().astype(int).sum()
             daily_predictions.append({
                 '날짜': date_iter.strftime('%Y-%m-%d'),
@@ -229,20 +253,20 @@ class SalesPredictor:
         """오늘 시간대별 예측 (target_time 이후부터)"""
         if target_time is None:
             target_time = self.current_date
-            
+
         today = target_time.date()
-        
+
         actual_sales_so_far_today = self.get_actual_data_for_date_and_hour(today, end_hour=target_time.hour)
-        
+
         start_hour = target_time.replace(minute=0, second=0, microsecond=0)
         end_hour = target_time.replace(hour=23, minute=0, second=0, microsecond=0)
 
         future_today = pd.DataFrame({
             'ds': pd.date_range(start=start_hour, end=end_hour, freq='h'),
         })
-        
+
         if future_today.empty:
-            total_actual_today = self.get_actual_data_for_date_and_hour(today, end_hour=24) 
+            total_actual_today = self.get_actual_data_for_date_and_hour(today, end_hour=24)
             predicted_sales_today = pd.DataFrame({
                 'ds': [target_time.replace(hour=23)],
                 'yhat': [0],
@@ -254,11 +278,11 @@ class SalesPredictor:
                 '누적_달성율(%)': [( (self.current_month_actual + total_actual_today) / self.target_sales * 100).round(1)]
             })
             return predicted_sales_today, total_actual_today
-            
+
         future_today['hour'] = future_today['ds'].dt.hour
         future_today['dayofweek'] = future_today['ds'].dt.dayofweek
         future_today['month'] = future_today['ds'].dt.month
-        
+
         if self.holidays is not None and not self.holidays.empty:
             future_today['is_holiday'] = future_today['ds'].dt.date.isin(self.holidays['ds'].dt.date).astype(int)
         else:
@@ -277,7 +301,7 @@ class SalesPredictor:
         else:
             hourly_avg = self.data.groupby(self.data['datetime'].dt.hour)['건수'].mean().reset_index()
             hourly_avg.columns = ['hour', 'avg_sales']
-            
+
             forecast_today = pd.merge(future_today, hourly_avg, on='hour', how='left')
             forecast_today['yhat'] = forecast_today['avg_sales'].fillna(0)
 
@@ -285,7 +309,7 @@ class SalesPredictor:
         predicted_sales_today_df.loc[:, '예측값'] = predicted_sales_today_df['yhat'].round().astype(int)
         predicted_sales_today_df.loc[:, '날짜'] = predicted_sales_today_df['ds'].dt.strftime("%Y-%m-%d")
         predicted_sales_today_df.loc[:, '시간대'] = predicted_sales_today_df['ds'].dt.hour.apply(lambda x: f"{x}시")
-        
+
         total_predicted_from_current_time = predicted_sales_today_df['예측값'].sum()
         today_full_day_estimated_sales = actual_sales_so_far_today + total_predicted_from_current_time
 
@@ -294,7 +318,7 @@ class SalesPredictor:
         for index, row in predicted_sales_today_df.iterrows():
             cumulative_predicted_so_far += row['예측값']
             cumulative_list.append(self.current_month_actual + actual_sales_so_far_today + cumulative_predicted_so_far)
-            
+
         predicted_sales_today_df['누적_건수'] = cumulative_list
         predicted_sales_today_df['누적_달성율(%)'] = (predicted_sales_today_df['누적_건수'] / self.target_sales * 100).round(1)
 
@@ -308,17 +332,28 @@ st.markdown("---")
 # 목표 청약 건수 입력 (사이드바)
 st.sidebar.header("설정")
 target_sales_input = st.sidebar.number_input(
-    "월 목표 청약 건수:", 
-    min_value=1000, 
-    max_value=100000, 
-    value=23549, 
+    "월 목표 청약 건수:",
+    min_value=1000,
+    max_value=100000,
+    value=23549,
     step=100
 )
 
+# --- ★★★ 가장 중요한 부분: 데이터 디렉토리 절대 경로 지정 ★★★ ---
+# 이전 로그에서 `app.py` 경로가 `/mount/src/ai-project/predict_sales/app.py`였다면,
+# `data` 폴더는 같은 `predict_sales` 폴더 안에 있을 것입니다.
+# 따라서 아래 경로가 가장 유력합니다.
+# GitHub 저장소 구조와 Streamlit Cloud 로그를 기반으로 이 경로를 정확히 입력하세요.
+fixed_data_dir = "/mount/src/ai-project/predict_sales/data/"
+
+# 만약 GitHub 저장소의 루트에 바로 `app.py`와 `data/`가 있다면:
+# fixed_data_dir = "/mount/src/YOUR_GITHUB_REPOSITORY_NAME/data/"
+# (여기서 YOUR_GITHUB_REPOSITORY_NAME은 여러분의 실제 GitHub 저장소 이름입니다.)
+# 예: fixed_data_dir = "/mount/src/my-streamlit-app/data/"
 
 
-# 예측기 인스턴스 생성
-predictor = SalesPredictor(data_dir=data_dir, target_sales=target_sales_input)
+# 예측기 인스턴스 생성 (절대 경로 전달)
+predictor = SalesPredictor(data_dir=fixed_data_dir, target_sales=target_sales_input)
 
 # 데이터 로드 및 모델 학습
 try:
@@ -329,8 +364,11 @@ try:
     st.success("데이터 로드 및 모델 학습 완료!")
 except ValueError as e:
     st.error(f"데이터 로드 중 오류가 발생했습니다: {e}")
-    st.warning("`data/` 폴더에 `.txt` 청약 데이터 파일과 `holidays.json` 파일이 올바르게 위치하는지 확인해주세요.")
+    st.warning("경로 및 파일 존재 여부를 다시 확인해 주세요.")
     st.stop() # 오류 발생 시 앱 실행 중단
+except Exception as e: # 다른 예상치 못한 오류에 대비
+    st.error(f"예측기 초기화 또는 학습 중 알 수 없는 오류가 발생했습니다: {e}")
+    st.stop()
 
 now = predictor.current_date
 today_str = now.strftime("%Y-%m-%d")
@@ -346,7 +384,7 @@ predicted_sales_today_df, today_full_day_estimated_sales = predictor.predict_tod
 if not predicted_sales_today_df.empty:
     st.subheader(f"시간대별 청약 건수 예측 ({now.hour}시~23시):")
     st.dataframe(predicted_sales_today_df[['날짜', '시간대', '예측값', '누적_건수', '누적_달성율(%)']].style.format({
-        '누적_건수': "{:,.0f}", 
+        '누적_건수': "{:,.0f}",
         '누적_달성율(%)': "{:.1f}%"
     }), use_container_width=True)
 
@@ -382,7 +420,7 @@ if not daily_predictions.empty:
         else:
             cumulative_sales += row['예측값']
             cumulative_count_list.append(cumulative_sales)
-        
+
         achievement_rate_list.append((cumulative_sales / predictor.target_sales * 100).round(1))
 
     daily_predictions['누적_건수'] = cumulative_count_list
@@ -390,10 +428,10 @@ if not daily_predictions.empty:
 
     st.dataframe(daily_predictions[['날짜', '예측값', '데이터타입', '누적_건수', '누적_달성율(%)']].style.format({
         '예측값': "{:,.0f}",
-        '누적_건수': "{:,.0f}", 
+        '누적_건수': "{:,.0f}",
         '누적_달성율(%)': "{:.1f}%"
     }), use_container_width=True)
-    
+
     if not daily_predictions.empty:
         total_month_sales_overall = daily_predictions['누적_건수'].iloc[-1]
         achievement_rate_month_overall = (total_month_sales_overall / predictor.target_sales) * 100
