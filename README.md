@@ -5,7 +5,7 @@
 
 ## 📁 프로젝트 목록
 
-### 🔹 [predict_sales](./predict_sales/README.md)
+### 🔹 [predict_sales](./predict_sales/readme.md)
 - **설명**: 시간대별 청약 데이터를 기반으로 당일 및 월말까지의 총 청약 건수를 예측합니다.
 - **주요 기능**:
   - 실시간 누적 청약 수 기준 예측
