@@ -7,6 +7,12 @@ import json
 import numpy as np
 from calendar import monthrange
 
+# 데이터 디렉토리 설정
+# 로컬에서 실행할 때의 경로:
+# data_dir = "/Users/linakorea/Project/ai-project/predict_sales/data/"
+# Streamlit Cloud에 배포할 때는 상대 경로를 사용하는 것이 일반적입니다.
+data_dir = "data/" 
+
 # --- SalesPredictor 클래스 정의 (기존 코드와 동일) ---
 class SalesPredictor:
     def __init__(self, data_dir, target_sales=23549):
@@ -309,11 +315,7 @@ target_sales_input = st.sidebar.number_input(
     step=100
 )
 
-# 데이터 디렉토리 설정
-# 로컬에서 실행할 때의 경로:
-# data_dir = "/Users/linakorea/Project/ai-project/predict_sales/data/"
-# Streamlit Cloud에 배포할 때는 상대 경로를 사용하는 것이 일반적입니다.
-data_dir = "data/" 
+
 
 # 예측기 인스턴스 생성
 predictor = SalesPredictor(data_dir=data_dir, target_sales=target_sales_input)
