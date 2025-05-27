@@ -275,7 +275,7 @@ class SalesPredictor:
                 '시간대': ["23시"],
                 '누적_예측값': [0],
                 '누적_건수': [self.current_month_actual + total_actual_today],
-                '누적_달성율(%)': [( (self.current_month_actual + total_actual_today) / self.target_sales * 100).round(1)]
+                '달성율(%)': [( (self.current_month_actual + total_actual_today) / self.target_sales * 100).round(1)]
             })
             return predicted_sales_today, total_actual_today
 
@@ -320,7 +320,7 @@ class SalesPredictor:
             cumulative_list.append(self.current_month_actual + actual_sales_so_far_today + cumulative_predicted_so_far)
 
         predicted_sales_today_df['누적_건수'] = cumulative_list
-        predicted_sales_today_df['누적_달성율(%)'] = (predicted_sales_today_df['누적_건수'] / self.target_sales * 100).round(1)
+        predicted_sales_today_df['달성율(%)'] = (predicted_sales_today_df['누적_건수'] / self.target_sales * 100).round(1)
 
         return predicted_sales_today_df, today_full_day_estimated_sales
 
@@ -383,7 +383,7 @@ predicted_sales_today_df, today_full_day_estimated_sales = predictor.predict_tod
 
 if not predicted_sales_today_df.empty:
     st.subheader(f"시간대별 청약 건수 예측 ({now.hour}시~23시):")
-    st.dataframe(predicted_sales_today_df[['날짜', '시간대', '예측값', '누적_건수', '누적_달성율(%)']].style.format({
+    st.dataframe(predicted_sales_today_df[['날짜', '시간대', '예측값', '누적_건수', '달성율(%)']].style.format({
         '누적_건수': "{:,.0f}",
         '달성율(%)': "{:.1f}%"
     }), use_container_width=True, hide_index=True, height=(len(predicted_sales_today_df) + 1) * 35 + 3)
@@ -424,9 +424,9 @@ if not daily_predictions.empty:
         achievement_rate_list.append((cumulative_sales / predictor.target_sales * 100).round(1))
 
     daily_predictions['누적_건수'] = cumulative_count_list
-    daily_predictions['누적_달성율(%)'] = achievement_rate_list
+    daily_predictions['달성율(%)'] = achievement_rate_list
 
-    st.dataframe(daily_predictions[['날짜', '예측값', '데이터타입', '누적_건수', '누적_달성율(%)']].style.format({
+    st.dataframe(daily_predictions[['날짜', '예측값', '데이터타입', '누적_건수', '달성율(%)']].style.format({
         '예측값': "{:,.0f}",
         '누적_건수': "{:,.0f}",
         '달성율(%)': "{:.1f}%"
