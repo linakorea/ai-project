@@ -385,7 +385,7 @@ if not predicted_sales_today_df.empty:
     st.subheader(f"시간대별 청약 건수 예측 ({now.hour}시~23시):")
     st.dataframe(predicted_sales_today_df[['날짜', '시간대', '예측값', '누적_건수', '누적_달성율(%)']].style.format({
         '누적_건수': "{:,.0f}",
-        '누적_달성율(%)': "{:.1f}%"
+        '달성율(%)': "{:.1f}%"
     }), use_container_width=True, hide_index=True, height=(len(predicted_sales_today_df) + 1) * 35 + 3)
 
     col1, col2 = st.columns(2)
@@ -429,7 +429,7 @@ if not daily_predictions.empty:
     st.dataframe(daily_predictions[['날짜', '예측값', '데이터타입', '누적_건수', '누적_달성율(%)']].style.format({
         '예측값': "{:,.0f}",
         '누적_건수': "{:,.0f}",
-        '누적_달성율(%)': "{:.1f}%"
+        '달성율(%)': "{:.1f}%"
     }), use_container_width=True, hide_index=True, height=(len(daily_predictions) + 1) * 35 + 3)
 
     if not daily_predictions.empty:
