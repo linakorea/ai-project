@@ -22,8 +22,8 @@ class SalesPredictor:
 
     def load_data(self):
         """데이터 로드 및 전처리"""
-        st.write(f"현재 작업 디렉토리 (os.getcwd()): `{os.getcwd()}`")
-        st.write(f"설정된 data_dir: `{self.data_dir}` (절대 경로로 간주)")
+        # st.write(f"현재 작업 디렉토리 (os.getcwd()): `{os.getcwd()}`")
+        # st.write(f"설정된 data_dir: `{self.data_dir}` (절대 경로로 간주)")
 
         if not os.path.exists(self.data_dir):
             st.error(f"오류: 데이터 디렉토리 '{self.data_dir}'를 찾을 수 없습니다. 경로를 확인해주세요.")
@@ -34,9 +34,9 @@ class SalesPredictor:
         try:
             # os.listdir()에 절대 경로를 직접 전달
             dir_contents = os.listdir(self.data_dir)
-            st.write(f"'{self.data_dir}' 내용: {dir_contents}")
+            # st.write(f"'{self.data_dir}' 내용: {dir_contents}")
             files = [f for f in dir_contents if f.endswith('.txt')]
-            st.write(f"찾은 .txt 파일: {files}")
+            # st.write(f"찾은 .txt 파일: {files}")
 
         except Exception as e:
             st.error(f"'{self.data_dir}' 디렉토리 목록 읽기 중 오류 발생: {e}")
@@ -85,7 +85,7 @@ class SalesPredictor:
         """공휴일 데이터 로드"""
         # holidays_file도 절대 경로를 직접 사용하도록 변경
         holidays_file = os.path.join(self.data_dir, "holidays.json")
-        st.write(f"공휴일 파일 경로: `{holidays_file}`")
+        # st.write(f"공휴일 파일 경로: `{holidays_file}`")
         try:
             with open(holidays_file) as f:
                 holidays_data = json.load(f)
