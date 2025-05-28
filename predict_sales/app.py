@@ -28,8 +28,8 @@ class SalesPredictor:
         if not os.path.exists(self.data_dir):
             st.error(f"오류: 데이터 디렉토리 '{self.data_dir}'를 찾을 수 없습니다. 경로를 확인해주세요.")
             st.stop() # 디렉토리가 없으면 앱 중단
-        else:
-            st.success(f"데이터 디렉토리 '{self.data_dir}' 존재 확인!")
+        # else:
+        #     st.success(f"데이터 디렉토리 '{self.data_dir}' 존재 확인!")
 
         try:
             # os.listdir()에 절대 경로를 직접 전달
@@ -170,7 +170,7 @@ class SalesPredictor:
         ]
 
         self.current_month_actual = current_month_data_until_yesterday['건수'].sum() if not current_month_data_until_yesterday.empty else 0
-        st.info(f"현재 월({current_month}월) 실제 청약 건수 ({yesterday.strftime('%Y-%m-%d')}까지): {self.current_month_actual}건")
+        # st.info(f"현재 월({current_month}월) 실제 청약 건수 ({yesterday.strftime('%Y-%m-%d')}까지): {self.current_month_actual}건")
 
     def get_actual_data_for_date_and_hour(self, target_date, end_hour=23):
         """특정 날짜의 특정 시간까지의 실제 데이터 합계 반환"""
@@ -346,6 +346,14 @@ target_sales_input = st.sidebar.number_input(
 # GitHub 저장소 구조와 Streamlit Cloud 로그를 기반으로 이 경로를 정확히 입력하세요.
 fixed_data_dir = "/mount/src/ai-project/predict_sales/data/"
 
+try:
+    # 서버에서는 기존 변수 사용 (변수가 이미 정의되어 있다고 가정)
+    if not os.path.exists(fixed_data_dir):
+        fixed_data_dir = 'data/'
+except NameError:
+    # 로컬에서는 변수가 정의되지 않았으므로 'data/' 사용
+    fixed_data_dir = 'data/'
+
 # 만약 GitHub 저장소의 루트에 바로 `app.py`와 `data/`가 있다면:
 # fixed_data_dir = "/mount/src/YOUR_GITHUB_REPOSITORY_NAME/data/"
 # (여기서 YOUR_GITHUB_REPOSITORY_NAME은 여러분의 실제 GitHub 저장소 이름입니다.)
@@ -361,7 +369,7 @@ try:
     predictor.load_data()
     predictor.calculate_current_month_actual()
     predictor.train()
-    st.success("데이터 로드 및 모델 학습 완료!")
+    # st.success("데이터 로드 및 모델 학습 완료!")
 except ValueError as e:
     st.error(f"데이터 로드 중 오류가 발생했습니다: {e}")
     st.warning("경로 및 파일 존재 여부를 다시 확인해 주세요.")
