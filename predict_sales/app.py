@@ -325,7 +325,7 @@ st.markdown(
         font-family: 'Noto Sans KR', sans-serif;
         color: #333;
         line-height: 1.6;
-        font-size: 1.1em; /* 기본 폰트 크기 증가 */
+        font-size: 1em; /* 기본 폰트 크기 조정 */
     }
 
     /* Streamlit 기본 여백 제거 및 배경색 설정 */
@@ -353,13 +353,13 @@ st.markdown(
 
     h2 {
         color: #2c3e50;
-        font-size: 1.8em; /* h2 폰트 크기 증가 */
+        font-size: 1.6em; /* h2 폰트 크기 조정 */
         margin-bottom: 20px;
     }
 
     h3 {
         color: #2c3e50;
-        font-size: 1.4em; /* h3 폰트 크기 증가 */
+        font-size: 1.2em; /* h3 폰트 크기 조정 */
         margin-bottom: 15px;
     }
 
@@ -375,17 +375,17 @@ st.markdown(
 
     .forecast-summary-st h2 {
         color: #2980b9;
-        font-size: 1.8em;
+        font-size: 1.6em; /* 요약 h2 폰트 크기 조정 */
         margin-bottom: 10px;
     }
 
     .forecast-summary-st p {
-        font-size: 1.2em;
+        font-size: 1.1em; /* 요약 p 폰트 크기 조정 */
         color: #444;
     }
 
     .forecast-summary-st .highlight {
-        font-size: 2.2em;
+        font-size: 2em; /* 요약 강조 폰트 크기 조정 */
         font-weight: 700;
         color: #2980b9;
         margin: 0 5px;
@@ -402,19 +402,19 @@ st.markdown(
         border: 1px solid #eee; /* 옅은 테두리 */
     }
     [data-testid="stMetricLabel"] {
-        font-size: 1.2em; /* 라벨 폰트 크기 증가 */
+        font-size: 1.1em; /* 라벨 폰트 크기 조정 */
         font-weight: 600;
         color: #555;
         margin-bottom: 8px;
     }
     [data-testid="stMetricValue"] {
-        font-size: 2.8em !important; /* 값 폰트 크기 크게 */
+        font-size: 2.5em !important; /* 값 폰트 크기 조정 */
         font-weight: 700;
         color: #3498db;
         margin-top: 5px;
     }
     [data-testid="stMetricDelta"] {
-        font-size: 1.1em; /* 델타 폰트 크기 증가 */
+        font-size: 1em; /* 델타 폰트 크기 조정 */
         color: #28a745; /* 긍정적인 변화 */
         font-weight: 500;
         margin-top: 10px;
@@ -440,7 +440,7 @@ st.markdown(
         color: #555;
         padding: 15px 20px;
         text-align: left;
-        font-size: 1.05em; /* 테이블 헤더 폰트 크기 */
+        font-size: 1em; /* 테이블 헤더 폰트 크기 조정 */
     }
 
     .stDataFrame td {
@@ -448,7 +448,7 @@ st.markdown(
         text-align: left;
         border-bottom: 1px solid #EEE;
         color: #333; /* 테이블 셀 텍스트 색상 명확히 */
-        font-size: 1em; /* 테이블 셀 폰트 크기 */
+        font-size: 0.95em; /* 테이블 셀 폰트 크기 조정 */
     }
 
     .stDataFrame tbody tr:last-child td {
