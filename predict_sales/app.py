@@ -1,3 +1,4 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import os
@@ -10,7 +11,7 @@ from calendar import monthrange
 # --- SalesPredictor 클래스 정의 ---
 class SalesPredictor:
     def __init__(self, data_dir, target_sales=23549):
-        # 이제 data_dir은 외부에서 주입되는 완전한 절대 경로를 기대합니다.
+        # data_dir은 외부에서 주입되는 완전한 절대 경로를 기대합니다.
         self.data_dir = data_dir
         self.target_sales = target_sales
         self.model_weekday = None
@@ -22,34 +23,24 @@ class SalesPredictor:
 
     def load_data(self):
         """데이터 로드 및 전처리"""
-        # st.write(f"현재 작업 디렉토리 (os.getcwd()): `{os.getcwd()}`")
-        # st.write(f"설정된 data_dir: `{self.data_dir}` (절대 경로로 간주)")
-
         if not os.path.exists(self.data_dir):
             st.error(f"오류: 데이터 디렉토리 '{self.data_dir}'를 찾을 수 없습니다. 경로를 확인해주세요.")
-            st.stop() # 디렉토리가 없으면 앱 중단
-        # else:
-        #     st.success(f"데이터 디렉토리 '{self.data_dir}' 존재 확인!")
+            st.stop()
 
         try:
-            # os.listdir()에 절대 경로를 직접 전달
             dir_contents = os.listdir(self.data_dir)
-            # st.write(f"'{self.data_dir}' 내용: {dir_contents}")
             files = [f for f in dir_contents if f.endswith('.txt')]
-            # st.write(f"찾은 .txt 파일: {files}")
-
         except Exception as e:
             st.error(f"'{self.data_dir}' 디렉토리 목록 읽기 중 오류 발생: {e}")
-            st.stop() # 오류 발생 시 앱 중단
-
+            st.stop()
 
         dfs = []
-        if not files: # .txt 파일을 하나도 찾지 못했을 때
+        if not files:
             st.error(f"오류: '{self.data_dir}'에서 '.txt' 파일을 찾을 수 없습니다. 파일 이름을 확인해주세요.")
-            raise ValueError(f"데이터 파일을 찾을 수 없습니다.")
+            raise ValueError("데이터 파일을 찾을 수 없습니다.")
 
         for file in files:
-            file_path = os.path.join(self.data_dir, file) # data_dir이 이미 절대 경로
+            file_path = os.path.join(self.data_dir, file)
             if os.path.exists(file_path):
                 df = pd.read_csv(file_path, sep='\t')
                 df['일자'] = pd.to_datetime(df['일자'])
@@ -59,12 +50,12 @@ class SalesPredictor:
 
         if dfs:
             self.data = pd.concat(dfs, ignore_index=True)
-            self.data = self.data.sort_values('일자') # 날짜 기준으로 정렬
+            self.data = self.data.sort_values('일자')
         else:
             st.error(f"오류: '{self.data_dir}'에서 유효한 데이터를 로드할 수 없습니다.")
             raise ValueError("데이터 파일을 로드할 수 없습니다.")
 
-        # 데이터 전처리 및 특징 추가 (기존과 동일)
+        # 데이터 전처리 및 특징 추가
         self.data['datetime'] = self.data['일자'] + pd.to_timedelta(self.data['시간대'], unit='h')
         self.data = self.data.sort_values('datetime')
         self.data['hour'] = self.data['datetime'].dt.hour
@@ -83,9 +74,7 @@ class SalesPredictor:
 
     def load_holidays(self):
         """공휴일 데이터 로드"""
-        # holidays_file도 절대 경로를 직접 사용하도록 변경
         holidays_file = os.path.join(self.data_dir, "holidays.json")
-        # st.write(f"공휴일 파일 경로: `{holidays_file}`")
         try:
             with open(holidays_file) as f:
                 holidays_data = json.load(f)
@@ -170,7 +159,6 @@ class SalesPredictor:
         ]
 
         self.current_month_actual = current_month_data_until_yesterday['건수'].sum() if not current_month_data_until_yesterday.empty else 0
-        # st.info(f"현재 월({current_month}월) 실제 청약 건수 ({yesterday.strftime('%Y-%m-%d')}까지): {self.current_month_actual}건")
 
     def get_actual_data_for_date_and_hour(self, target_date, end_hour=23):
         """특정 날짜의 특정 시간까지의 실제 데이터 합계 반환"""
@@ -326,6 +314,175 @@ class SalesPredictor:
 
 # --- Streamlit 앱 시작 ---
 st.set_page_config(layout="wide") # 페이지 레이아웃을 넓게 설정
+
+# 커스텀 CSS (이전 디자인의 주요 스타일을 Streamlit에 적용)
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+
+    html, body, [class*="st-emotion"] {
+        font-family: 'Noto Sans KR', sans-serif;
+        color: #333;
+        line-height: 1.6;
+    }
+
+    /* Streamlit 기본 여백 제거 및 배경색 설정 */
+    .stApp {
+        background-color: #F8F8F8; /* 아주 연한 회색 배경 (흰색에 가까움) */
+    }
+
+    /* 컨테이너 스타일 (이전 HTML의 .container와 유사) */
+    .st-emotion-cache-z5fcl4 { /* Streamlit main content block */
+        max-width: 1200px;
+        margin: 20px auto;
+        background-color: #FFFFFF; /* 흰색 배경 */
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        padding: 25px;
+    }
+
+    /* 제목 스타일 */
+    h1 {
+        text-align: center;
+        color: #2c3e50;
+        margin-bottom: 30px;
+        font-weight: 700;
+    }
+
+    /* 탭 버튼 스타일 */
+    .stTabs [data-baseweb="tab-list"] {
+        justify-content: center;
+        gap: 20px; /* 탭 버튼 간격 */
+        border-bottom: 2px solid #EEE;
+        margin-bottom: 30px;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        padding: 15px 25px;
+        font-size: 1.1em;
+        font-weight: 500;
+        color: #555;
+        background-color: transparent;
+        border: none;
+        transition: color 0.3s ease, border-bottom 0.3s ease;
+    }
+
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: #3498db; /* 활성화된 탭 색상 */
+        border-bottom: 3px solid #3498db;
+        font-weight: 700;
+    }
+
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #777; /* 호버 시 색상 변경 */
+    }
+
+    /* 예측 요약 섹션 스타일 */
+    .forecast-summary-st {
+        text-align: center;
+        margin-bottom: 40px;
+        background-color: #e8f5fd; /* 연한 파란색 배경 */
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+    }
+
+    .forecast-summary-st h2 {
+        color: #2980b9;
+        font-size: 1.8em;
+        margin-bottom: 10px;
+    }
+
+    .forecast-summary-st p {
+        font-size: 1.2em;
+        color: #444;
+    }
+
+    .forecast-summary-st .highlight {
+        font-size: 2.2em;
+        font-weight: 700;
+        color: #2980b9;
+        margin: 0 5px;
+    }
+
+    /* Streamlit Metric 위젯 스타일 */
+    [data-testid="stMetric"] {
+        background-color: #f9f9f9;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        text-align: center;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 1.1em;
+        font-weight: 500;
+        color: #666;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 2.2em !important; /* Streamlit 기본값보다 크게 */
+        font-weight: 700;
+        color: #3498db;
+        margin-top: 5px;
+    }
+    [data-testid="stMetricDelta"] {
+        font-size: 1em;
+        color: #28a745; /* 긍정적인 변화 */
+    }
+
+    /* 테이블 스타일 (st.dataframe) */
+    .stDataFrame {
+        border-radius: 10px;
+        overflow: hidden; /* 둥근 모서리 적용 */
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .stDataFrame table {
+        border-collapse: separate;
+        border-spacing: 0;
+        background-color: #FFFFFF;
+    }
+
+    .stDataFrame th {
+        background-color: #f2f2f2;
+        font-weight: 600;
+        color: #555;
+        padding: 15px 20px;
+        text-align: left;
+    }
+
+    .stDataFrame td {
+        padding: 15px 20px;
+        text-align: left;
+        border-bottom: 1px solid #EEE;
+    }
+
+    .stDataFrame tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    .stDataFrame tbody tr:nth-child(even) {
+        background-color: #FAFAFA;
+    }
+
+    .stDataFrame tbody tr:hover {
+        background-color: #E6F7FF;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+    }
+
+    /* 차트 컨테이너 스타일 */
+    .st-emotion-cache-1c7y2vl { /* Streamlit chart container */
+        padding: 20px;
+        background-color: #FFF;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("🚀 월별 청약 건수 예측 대시보드")
 st.markdown("---")
 
@@ -340,24 +497,20 @@ target_sales_input = st.sidebar.number_input(
 )
 
 # --- ★★★ 가장 중요한 부분: 데이터 디렉토리 절대 경로 지정 ★★★ ---
-# 이전 로그에서 `app.py` 경로가 `/mount/src/ai-project/predict_sales/app.py`였다면,
-# `data` 폴더는 같은 `predict_sales` 폴더 안에 있을 것입니다.
-# 따라서 아래 경로가 가장 유력합니다.
-# GitHub 저장소 구조와 Streamlit Cloud 로그를 기반으로 이 경로를 정확히 입력하세요.
-fixed_data_dir = "/mount/src/ai-project/predict_sales/data/"
+# Streamlit Cloud 환경을 위한 경로 설정
+# GitHub 저장소의 루트에 `data/` 폴더가 있다고 가정
+# 예: GitHub repo name이 'my-streamlit-app'인 경우
+# fixed_data_dir = "/mount/src/my-streamlit-app/data/"
+# 사용자께서 제공해주신 기존 app.py의 경로 설정 로직을 따릅니다.
+fixed_data_dir = "/mount/src/ai-project/predict_sales/data/" # 기본 경로 설정
 
-try:
-    # 서버에서는 기존 변수 사용 (변수가 이미 정의되어 있다고 가정)
-    if not os.path.exists(fixed_data_dir):
-        fixed_data_dir = 'data/'
-except NameError:
-    # 로컬에서는 변수가 정의되지 않았으므로 'data/' 사용
+# 로컬 개발 환경을 위한 대체 경로 (Streamlit Cloud에서는 이 부분이 실행되지 않음)
+if not os.path.exists(fixed_data_dir):
+    # 로컬에서 실행 시 'data/' 폴더가 현재 스크립트와 같은 디렉토리에 있을 경우
     fixed_data_dir = 'data/'
-
-# 만약 GitHub 저장소의 루트에 바로 `app.py`와 `data/`가 있다면:
-# fixed_data_dir = "/mount/src/YOUR_GITHUB_REPOSITORY_NAME/data/"
-# (여기서 YOUR_GITHUB_REPOSITORY_NAME은 여러분의 실제 GitHub 저장소 이름입니다.)
-# 예: fixed_data_dir = "/mount/src/my-streamlit-app/data/"
+    if not os.path.exists(fixed_data_dir):
+        st.error(f"오류: 로컬 환경에서 데이터 디렉토리 '{fixed_data_dir}'를 찾을 수 없습니다. 경로를 확인해주세요.")
+        st.stop()
 
 
 # 예측기 인스턴스 생성 (절대 경로 전달)
@@ -369,12 +522,12 @@ try:
     predictor.load_data()
     predictor.calculate_current_month_actual()
     predictor.train()
-    # st.success("데이터 로드 및 모델 학습 완료!")
+    # st.success("데이터 로드 및 모델 학습 완료!") # 로딩 성공 메시지는 주석 처리
 except ValueError as e:
     st.error(f"데이터 로드 중 오류가 발생했습니다: {e}")
     st.warning("경로 및 파일 존재 여부를 다시 확인해 주세요.")
-    st.stop() # 오류 발생 시 앱 실행 중단
-except Exception as e: # 다른 예상치 못한 오류에 대비
+    st.stop()
+except Exception as e:
     st.error(f"예측기 초기화 또는 학습 중 알 수 없는 오류가 발생했습니다: {e}")
     st.stop()
 
@@ -384,68 +537,100 @@ today_str = now.strftime("%Y-%m-%d")
 st.write(f"현재 시간: **{now.strftime('%Y-%m-%d %H:%M:%S')}**")
 st.markdown("---")
 
-# --- 오늘 시간대별 예측 ---
-st.header(f"📅 {today_str} 청약 건수 예측")
+# --- 탭 구현 ---
+tab1, tab2, tab3 = st.tabs(["오늘 예측", "전체 통계", "분석 리포트"])
 
-predicted_sales_today_df, today_full_day_estimated_sales = predictor.predict_today(now)
+with tab1:
+    st.header(f"📅 {today_str} 청약 건수 예측")
 
-if not predicted_sales_today_df.empty:
-    st.subheader(f"시간대별 청약 건수 예측 ({now.hour}시~23시):")
-    st.dataframe(predicted_sales_today_df[['날짜', '시간대', '예측값', '누적_건수', '달성율(%)']].style.format({
-        '누적_건수': "{:,.0f}",
-        '달성율(%)': "{:.1f}%"
-    }), use_container_width=True, hide_index=True, height=(len(predicted_sales_today_df) + 1) * 35 + 3)
+    predicted_sales_today_df, today_full_day_estimated_sales = predictor.predict_today(now)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric(label=f"**{today_str} 마감까지 예상 총 건수**", value=f"{today_full_day_estimated_sales:,.0f}건")
-    with col2:
-        today_23hr_cumulative_sales = predicted_sales_today_df['누적_건수'].iloc[-1]
-        achievement_rate_today_23hr = (today_23hr_cumulative_sales / predictor.target_sales) * 100
-        st.metric(label=f"**{now.month}월 목표 달성율 (오늘 마감까지)**", value=f"{achievement_rate_today_23hr:.1f}%", delta=f"{predictor.target_sales - today_23hr_cumulative_sales:,.0f}건 남음")
+    if not predicted_sales_today_df.empty:
+        # 예측 요약 섹션 (이전 HTML의 .forecast-summary와 유사)
+        st.markdown(
+            f"""
+            <div class="forecast-summary-st">
+                <h2>오늘의 예상 청약 요약</h2>
+                <p>총 예상 청약 건수: <span class="highlight">{today_full_day_estimated_sales:,.0f}</span>건</p>
+                <p>최다 예상 시간대: <span class="highlight">{predicted_sales_today_df['시간대'].iloc[predicted_sales_today_df['예측값'].idxmax()]}</span> (<span class="highlight">{predicted_sales_today_df['예측값'].max():,.0f}</span>건)</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-st.markdown("---")
+        st.subheader(f"시간대별 청약 건수 예측 ({now.hour}시~23시):")
+        # 시간대별 예측 데이터프레임 표시
+        st.dataframe(predicted_sales_today_df[['날짜', '시간대', '예측값', '누적_건수', '달성율(%)']].style.format({
+            '누적_건수': "{:,.0f}",
+            '달성율(%)': "{:.1f}%"
+        }), use_container_width=True, hide_index=True, height=(len(predicted_sales_today_df) + 1) * 35 + 3)
 
-# --- 이번 달 말일까지 일별 예측 ---
-st.header(f"🗓️ {now.month}월 말일까지 일별 청약 건수 예측")
+        # 시간대별 청약 건수 그래프 (곡선)
+        st.subheader("시간대별 청약 건수 그래프")
+        st.line_chart(predicted_sales_today_df.set_index('시간대')['예측값'])
 
-current_year = now.year
-current_month = now.month
-last_day = monthrange(current_year, current_month)[1]
-end_of_month = datetime(current_year, current_month, last_day)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(label=f"**{today_str} 마감까지 예상 총 건수**", value=f"{today_full_day_estimated_sales:,.0f}건")
+        with col2:
+            today_23hr_cumulative_sales = predicted_sales_today_df['누적_건수'].iloc[-1]
+            achievement_rate_today_23hr = (today_23hr_cumulative_sales / predictor.target_sales) * 100
+            st.metric(label=f"**{now.month}월 목표 달성율 (오늘 마감까지)**", value=f"{achievement_rate_today_23hr:.1f}%", delta=f"{predictor.target_sales - today_23hr_cumulative_sales:,.0f}건 남음")
+    else:
+        st.write("오늘 예측 데이터가 없습니다.")
 
-daily_predictions = predictor.predict(start_date=now, end_date=end_of_month, today_full_day_estimated_sales=today_full_day_estimated_sales)
+with tab2:
+    st.header(f"🗓️ {now.month}월 말일까지 일별 청약 건수 예측")
 
-if not daily_predictions.empty:
-    cumulative_sales = today_23hr_cumulative_sales if 'today_23hr_cumulative_sales' in locals() else predictor.current_month_actual
+    current_year = now.year
+    current_month = now.month
+    last_day = monthrange(current_year, current_month)[1]
+    end_of_month = datetime(current_year, current_month, last_day)
 
-    cumulative_count_list = []
-    achievement_rate_list = []
-
-    for idx, row in daily_predictions.iterrows():
-        if row['날짜'] == today_str:
-            cumulative_count_list.append(cumulative_sales)
-        else:
-            cumulative_sales += row['예측값']
-            cumulative_count_list.append(cumulative_sales)
-
-        achievement_rate_list.append((cumulative_sales / predictor.target_sales * 100).round(1))
-
-    daily_predictions['누적_건수'] = cumulative_count_list
-    daily_predictions['달성율(%)'] = achievement_rate_list
-
-    st.dataframe(daily_predictions[['날짜', '예측값', '데이터타입', '누적_건수', '달성율(%)']].style.format({
-        '예측값': "{:,.0f}",
-        '누적_건수': "{:,.0f}",
-        '달성율(%)': "{:.1f}%"
-    }), use_container_width=True, hide_index=True, height=(len(daily_predictions) + 1) * 35 + 3)
+    daily_predictions = predictor.predict(start_date=now, end_date=end_of_month, today_full_day_estimated_sales=today_full_day_estimated_sales)
 
     if not daily_predictions.empty:
-        total_month_sales_overall = daily_predictions['누적_건수'].iloc[-1]
-        achievement_rate_month_overall = (total_month_sales_overall / predictor.target_sales) * 100
-        st.metric(label=f"**{current_month}월 전체 목표 달성율 (실제 + 예측)**", value=f"{achievement_rate_month_overall:.1f}%")
-else:
-    st.write("이번 달 남은 기간에 대한 예측 데이터가 없습니다.")
+        cumulative_sales = today_23hr_cumulative_sales if 'today_23hr_cumulative_sales' in locals() else predictor.current_month_actual
+
+        cumulative_count_list = []
+        achievement_rate_list = []
+
+        for idx, row in daily_predictions.iterrows():
+            if row['날짜'] == today_str:
+                # 오늘 날짜는 이미 predict_today에서 누적된 값으로 시작
+                cumulative_count_list.append(cumulative_sales)
+            else:
+                cumulative_sales += row['예측값']
+                cumulative_count_list.append(cumulative_sales)
+
+            achievement_rate_list.append((cumulative_sales / predictor.target_sales * 100).round(1))
+
+        daily_predictions['누적_건수'] = cumulative_count_list
+        daily_predictions['달성율(%)'] = achievement_rate_list
+
+        st.dataframe(daily_predictions[['날짜', '예측값', '데이터타입', '누적_건수', '달성율(%)']].style.format({
+            '예측값': "{:,.0f}",
+            '누적_건수': "{:,.0f}",
+            '달성율(%)': "{:.1f}%"
+        }), use_container_width=True, hide_index=True, height=(len(daily_predictions) + 1) * 35 + 3)
+
+        if not daily_predictions.empty:
+            total_month_sales_overall = daily_predictions['누적_건수'].iloc[-1]
+            achievement_rate_month_overall = (total_month_sales_overall / predictor.target_sales) * 100
+            st.metric(label=f"**{current_month}월 전체 목표 달성율 (실제 + 예측)**", value=f"{achievement_rate_month_overall:.1f}%")
+    else:
+        st.write("이번 달 남은 기간에 대한 예측 데이터가 없습니다.")
+
+with tab3:
+    st.header("분석 리포트")
+    st.markdown("""
+    이곳에는 청약 데이터에 대한 심층적인 분석 리포트, 트렌드, 예측 모델의 정확도 등에 대한 내용이 표시될 예정입니다.
+    <ul>
+        <li>요일별 청약 트렌드</li>
+        <li>캠페인 효과 분석</li>
+        <li>과거 데이터 기반의 예측 정확도</li>
+    </ul>
+    """, unsafe_allow_html=True) # HTML 목록을 표시하기 위해 unsafe_allow_html=True 사용
 
 st.markdown("---")
 st.caption("Powered by Streamlit and Prophet for sales prediction.")
