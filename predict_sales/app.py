@@ -7,7 +7,6 @@ from prophet import Prophet
 import json
 import numpy as np
 from calendar import monthrange
-import pytz # 시간대 처리를 위한 라이브러리 추가
 
 # --- SalesPredictor 클래스 정의 ---
 class SalesPredictor:
@@ -20,10 +19,7 @@ class SalesPredictor:
         self.holidays = None
         self.data = None
         self.current_month_actual = None
-        
-        # 현재 시간을 한국 시간(KST)으로 설정
-        self.korea_timezone = pytz.timezone('Asia/Seoul')
-        self.current_date = datetime.now(self.korea_timezone)
+        self.current_date = datetime.now()
 
     def load_data(self):
         """데이터 로드 및 전처리"""
@@ -60,8 +56,6 @@ class SalesPredictor:
             raise ValueError("데이터 파일을 로드할 수 없습니다.")
 
         # 데이터 전처리 및 특징 추가
-        # 로드된 데이터의 '일자' 컬럼이 시간대 정보가 없는 경우, KST로 변환
-        self.data['일자'] = self.data['일자'].dt.tz_localize(self.korea_timezone, errors='coerce')
         self.data['datetime'] = self.data['일자'] + pd.to_timedelta(self.data['시간대'], unit='h')
         self.data = self.data.sort_values('datetime')
         self.data['hour'] = self.data['datetime'].dt.hour
@@ -69,8 +63,6 @@ class SalesPredictor:
         self.data['month'] = self.data['datetime'].dt.month
 
         if self.holidays is not None and not self.holidays.empty:
-            # 공휴일 데이터도 KST로 변환 (날짜만 비교하므로 큰 영향은 없지만 일관성을 위해)
-            self.holidays['ds'] = self.holidays['ds'].dt.tz_localize(self.korea_timezone, errors='coerce')
             self.data['is_holiday'] = self.data['datetime'].dt.date.isin(self.holidays['ds'].dt.date).astype(int)
         else:
             self.data['is_holiday'] = 0
@@ -92,8 +84,6 @@ class SalesPredictor:
                 'lower_window': 0,
                 'upper_window': 1
             })
-            # 공휴일 데이터도 KST로 변환
-            self.holidays['ds'] = self.holidays['ds'].dt.tz_localize(self.korea_timezone, errors='coerce')
         except FileNotFoundError:
             st.warning(f"경로: '{holidays_file}'에서 공휴일 파일을 찾을 수 없습니다. 공휴일 없이 진행합니다.")
             self.holidays = pd.DataFrame(columns=['holiday', 'ds', 'lower_window', 'upper_window'])
@@ -181,7 +171,7 @@ class SalesPredictor:
     def predict(self, start_date, end_date, today_full_day_estimated_sales=None):
         """지정된 기간 동안 예측 수행 (실제 데이터가 있으면 우선 사용)"""
         future = pd.DataFrame({
-            'ds': pd.date_range(start=start_date.replace(hour=8), end=end_date.replace(hour=23), freq='h', tz=self.korea_timezone),
+            'ds': pd.date_range(start=start_date.replace(hour=8), end=end_date.replace(hour=23), freq='h'),
         })
         future['hour'] = future['ds'].dt.hour
         future['dayofweek'] = future['ds'].dt.dayofweek
@@ -260,7 +250,7 @@ class SalesPredictor:
         end_hour = target_time.replace(hour=23, minute=0, second=0, microsecond=0)
 
         future_today = pd.DataFrame({
-            'ds': pd.date_range(start=start_hour, end=end_hour, freq='h', tz=self.korea_timezone),
+            'ds': pd.date_range(start=start_hour, end=end_hour, freq='h'),
         })
 
         if future_today.empty:
@@ -335,7 +325,7 @@ st.markdown(
         font-family: 'Noto Sans KR', sans-serif;
         color: #333;
         line-height: 1.6;
-        font-size: 0.95em; /* 기본 폰트 크기 조정 */
+        font-size: 1em; /* 기본 폰트 크기 조정 */
     }
 
     /* Streamlit 기본 여백 제거 및 배경색 설정 */
@@ -363,13 +353,13 @@ st.markdown(
 
     h2 {
         color: #2c3e50;
-        font-size: 1.5em; /* h2 폰트 크기 조정 */
+        font-size: 1.6em; /* h2 폰트 크기 조정 */
         margin-bottom: 20px;
     }
 
     h3 {
         color: #2c3e50;
-        font-size: 1.1em; /* h3 폰트 크기 조정 */
+        font-size: 1.2em; /* h3 폰트 크기 조정 */
         margin-bottom: 15px;
     }
 
@@ -385,17 +375,17 @@ st.markdown(
 
     .forecast-summary-st h2 {
         color: #2980b9;
-        font-size: 1.5em; /* 요약 h2 폰트 크기 조정 */
+        font-size: 1.6em; /* 요약 h2 폰트 크기 조정 */
         margin-bottom: 10px;
     }
 
     .forecast-summary-st p {
-        font-size: 1em; /* 요약 p 폰트 크기 조정 */
+        font-size: 1.1em; /* 요약 p 폰트 크기 조정 */
         color: #444;
     }
 
     .forecast-summary-st .highlight {
-        font-size: 1.8em; /* 요약 강조 폰트 크기 조정 */
+        font-size: 2em; /* 요약 강조 폰트 크기 조정 */
         font-weight: 700;
         color: #2980b9;
         margin: 0 5px;
@@ -405,29 +395,29 @@ st.markdown(
     [data-testid="stMetric"] {
         background-color: #FFFFFF; /* 흰색 배경 */
         border-radius: 12px; /* 둥근 모서리 */
-        padding: 15px; /* 패딩 조정 */
+        padding: 20px; /* 패딩 증가 */
         box-shadow: 0 4px 15px rgba(0,0,0,0.08); /* 그림자 강화 */
         text-align: center;
         margin-bottom: 20px; /* 카드 간 간격 */
         border: 1px solid #eee; /* 옅은 테두리 */
     }
     [data-testid="stMetricLabel"] {
-        font-size: 1em; /* 라벨 폰트 크기 조정 */
+        font-size: 1.1em; /* 라벨 폰트 크기 조정 */
         font-weight: 600;
         color: #555;
-        margin-bottom: 5px;
+        margin-bottom: 8px;
     }
     [data-testid="stMetricValue"] {
-        font-size: 2.2em !important; /* 값 폰트 크기 조정 */
+        font-size: 2.5em !important; /* 값 폰트 크기 조정 */
         font-weight: 700;
         color: #3498db;
         margin-top: 5px;
     }
     [data-testid="stMetricDelta"] {
-        font-size: 0.9em; /* 델타 폰트 크기 조정 */
+        font-size: 1em; /* 델타 폰트 크기 조정 */
         color: #28a745; /* 긍정적인 변화 */
         font-weight: 500;
-        margin-top: 8px;
+        margin-top: 10px;
     }
 
     /* 테이블 스타일 (st.dataframe) */
@@ -448,17 +438,17 @@ st.markdown(
         background-color: #f2f2f2;
         font-weight: 600;
         color: #555;
-        padding: 12px 18px; /* 테이블 헤더 패딩 조정 */
+        padding: 15px 20px;
         text-align: left;
-        font-size: 0.95em; /* 테이블 헤더 폰트 크기 조정 */
+        font-size: 1em; /* 테이블 헤더 폰트 크기 조정 */
     }
 
     .stDataFrame td {
-        padding: 12px 18px; /* 테이블 셀 패딩 조정 */
+        padding: 15px 20px;
         text-align: left;
         border-bottom: 1px solid #EEE;
         color: #333; /* 테이블 셀 텍스트 색상 명확히 */
-        font-size: 0.9em; /* 테이블 셀 폰트 크기 조정 */
+        font-size: 0.95em; /* 테이블 셀 폰트 크기 조정 */
     }
 
     .stDataFrame tbody tr:last-child td {
