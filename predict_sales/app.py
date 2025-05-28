@@ -46,7 +46,7 @@ class SalesPredictor:
                 df['일자'] = pd.to_datetime(df['일자'])
                 dfs.append(df)
             else:
-                st.warning(f"경고: 파일 '{file_path}'가 존재하지 않습니다. 건너뜁니다.")
+                st.warning(f"경고: 파일 '{file_path}'가 존재하지 않습니다. 건너킵니다.")
 
         if dfs:
             self.data = pd.concat(dfs, ignore_index=True)
@@ -325,6 +325,7 @@ st.markdown(
         font-family: 'Noto Sans KR', sans-serif;
         color: #333;
         line-height: 1.6;
+        font-size: 1.1em; /* 기본 폰트 크기 증가 */
     }
 
     /* Streamlit 기본 여백 제거 및 배경색 설정 */
@@ -333,7 +334,7 @@ st.markdown(
     }
 
     /* 컨테이너 스타일 (이전 HTML의 .container와 유사) */
-    .st-emotion-cache-z5fcl4 { /* Streamlit main content block */
+    .st-emotion-cache-z5fcl4, .st-emotion-cache-1c7y2vl { /* Streamlit main content block & chart container */
         max-width: 1200px;
         margin: 20px auto;
         background-color: #FFFFFF; /* 흰색 배경 */
@@ -350,32 +351,16 @@ st.markdown(
         font-weight: 700;
     }
 
-    /* 탭 버튼 스타일 */
-    .stTabs [data-baseweb="tab-list"] {
-        justify-content: center;
-        gap: 20px; /* 탭 버튼 간격 */
-        border-bottom: 2px solid #EEE;
-        margin-bottom: 30px;
+    h2 {
+        color: #2c3e50;
+        font-size: 1.8em; /* h2 폰트 크기 증가 */
+        margin-bottom: 20px;
     }
 
-    .stTabs [data-baseweb="tab"] {
-        padding: 15px 25px;
-        font-size: 1.1em;
-        font-weight: 500;
-        color: #555;
-        background-color: transparent;
-        border: none;
-        transition: color 0.3s ease, border-bottom 0.3s ease;
-    }
-
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        color: #3498db; /* 활성화된 탭 색상 */
-        border-bottom: 3px solid #3498db;
-        font-weight: 700;
-    }
-
-    .stTabs [data-baseweb="tab"]:hover {
-        color: #777; /* 호버 시 색상 변경 */
+    h3 {
+        color: #2c3e50;
+        font-size: 1.4em; /* h3 폰트 크기 증가 */
+        margin-bottom: 15px;
     }
 
     /* 예측 요약 섹션 스타일 */
@@ -406,35 +391,41 @@ st.markdown(
         margin: 0 5px;
     }
 
-    /* Streamlit Metric 위젯 스타일 */
+    /* Streamlit Metric 위젯 스타일 (카드 형태) */
     [data-testid="stMetric"] {
-        background-color: #f9f9f9;
-        border-radius: 8px;
-        padding: 15px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        background-color: #FFFFFF; /* 흰색 배경 */
+        border-radius: 12px; /* 둥근 모서리 */
+        padding: 20px; /* 패딩 증가 */
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08); /* 그림자 강화 */
         text-align: center;
+        margin-bottom: 20px; /* 카드 간 간격 */
+        border: 1px solid #eee; /* 옅은 테두리 */
     }
     [data-testid="stMetricLabel"] {
-        font-size: 1.1em;
-        font-weight: 500;
-        color: #666;
+        font-size: 1.2em; /* 라벨 폰트 크기 증가 */
+        font-weight: 600;
+        color: #555;
+        margin-bottom: 8px;
     }
     [data-testid="stMetricValue"] {
-        font-size: 2.2em !important; /* Streamlit 기본값보다 크게 */
+        font-size: 2.8em !important; /* 값 폰트 크기 크게 */
         font-weight: 700;
         color: #3498db;
         margin-top: 5px;
     }
     [data-testid="stMetricDelta"] {
-        font-size: 1em;
+        font-size: 1.1em; /* 델타 폰트 크기 증가 */
         color: #28a745; /* 긍정적인 변화 */
+        font-weight: 500;
+        margin-top: 10px;
     }
 
     /* 테이블 스타일 (st.dataframe) */
     .stDataFrame {
         border-radius: 10px;
-        overflow: hidden; /* 둥근 모서리 적용 */
+        overflow: hidden;
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        margin-bottom: 30px; /* 테이블 하단 여백 */
     }
 
     .stDataFrame table {
@@ -449,12 +440,15 @@ st.markdown(
         color: #555;
         padding: 15px 20px;
         text-align: left;
+        font-size: 1.05em; /* 테이블 헤더 폰트 크기 */
     }
 
     .stDataFrame td {
         padding: 15px 20px;
         text-align: left;
         border-bottom: 1px solid #EEE;
+        color: #333; /* 테이블 셀 텍스트 색상 명확히 */
+        font-size: 1em; /* 테이블 셀 폰트 크기 */
     }
 
     .stDataFrame tbody tr:last-child td {
@@ -477,6 +471,7 @@ st.markdown(
         background-color: #FFF;
         border-radius: 10px;
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        margin-bottom: 30px; /* 차트 하단 여백 */
     }
     </style>
     """,
@@ -537,100 +532,122 @@ today_str = now.strftime("%Y-%m-%d")
 st.write(f"현재 시간: **{now.strftime('%Y-%m-%d %H:%M:%S')}**")
 st.markdown("---")
 
-# --- 탭 구현 ---
-tab1, tab2, tab3 = st.tabs(["오늘 예측", "전체 통계", "분석 리포트"])
+# --- 주요 정보 카드 (대시보드 상단) ---
+predicted_sales_today_df, today_full_day_estimated_sales = predictor.predict_today(now)
 
-with tab1:
-    st.header(f"📅 {today_str} 청약 건수 예측")
+# 오늘 마감까지의 누적 판매량 및 달성률 계산 (카드에 표시하기 위함)
+today_23hr_cumulative_sales = 0
+achievement_rate_today_23hr = 0
+if not predicted_sales_today_df.empty:
+    today_23hr_cumulative_sales = predicted_sales_today_df['누적_건수'].iloc[-1]
+    achievement_rate_today_23hr = (today_23hr_cumulative_sales / predictor.target_sales) * 100
 
-    predicted_sales_today_df, today_full_day_estimated_sales = predictor.predict_today(now)
+col1, col2, col3 = st.columns(3)
 
-    if not predicted_sales_today_df.empty:
-        # 예측 요약 섹션 (이전 HTML의 .forecast-summary와 유사)
-        st.markdown(
-            f"""
-            <div class="forecast-summary-st">
-                <h2>오늘의 예상 청약 요약</h2>
-                <p>총 예상 청약 건수: <span class="highlight">{today_full_day_estimated_sales:,.0f}</span>건</p>
-                <p>최다 예상 시간대: <span class="highlight">{predicted_sales_today_df['시간대'].iloc[predicted_sales_today_df['예측값'].idxmax()]}</span> (<span class="highlight">{predicted_sales_today_df['예측값'].max():,.0f}</span>건)</p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+with col1:
+    st.metric(
+        label=f"**{now.month}월 현재까지 실제 청약 건수**",
+        value=f"{predictor.current_month_actual:,.0f}건"
+    )
+with col2:
+    st.metric(
+        label=f"**{today_str} 마감까지 예상 총 건수**",
+        value=f"{today_full_day_estimated_sales:,.0f}건"
+    )
+with col3:
+    st.metric(
+        label=f"**{now.month}월 목표 달성율 (오늘 마감까지)**",
+        value=f"{achievement_rate_today_23hr:.1f}%",
+        delta=f"{predictor.target_sales - today_23hr_cumulative_sales:,.0f}건 남음"
+    )
 
-        st.subheader(f"시간대별 청약 건수 예측 ({now.hour}시~23시):")
-        # 시간대별 예측 데이터프레임 표시
-        st.dataframe(predicted_sales_today_df[['날짜', '시간대', '예측값', '누적_건수', '달성율(%)']].style.format({
-            '누적_건수': "{:,.0f}",
-            '달성율(%)': "{:.1f}%"
-        }), use_container_width=True, hide_index=True, height=(len(predicted_sales_today_df) + 1) * 35 + 3)
+st.markdown("---")
 
-        # 시간대별 청약 건수 그래프 (곡선)
-        st.subheader("시간대별 청약 건수 그래프")
-        st.line_chart(predicted_sales_today_df.set_index('시간대')['예측값'])
+# --- 오늘 시간대별 예측 섹션 ---
+st.header(f"📅 {today_str} 청약 건수 예측")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric(label=f"**{today_str} 마감까지 예상 총 건수**", value=f"{today_full_day_estimated_sales:,.0f}건")
-        with col2:
-            today_23hr_cumulative_sales = predicted_sales_today_df['누적_건수'].iloc[-1]
-            achievement_rate_today_23hr = (today_23hr_cumulative_sales / predictor.target_sales) * 100
-            st.metric(label=f"**{now.month}월 목표 달성율 (오늘 마감까지)**", value=f"{achievement_rate_today_23hr:.1f}%", delta=f"{predictor.target_sales - today_23hr_cumulative_sales:,.0f}건 남음")
-    else:
-        st.write("오늘 예측 데이터가 없습니다.")
+if not predicted_sales_today_df.empty:
+    # 예측 요약 섹션
+    st.markdown(
+        f"""
+        <div class="forecast-summary-st">
+            <h2>오늘의 예상 청약 요약</h2>
+            <p>총 예상 청약 건수: <span class="highlight">{today_full_day_estimated_sales:,.0f}</span>건</p>
+            <p>최다 예상 시간대: <span class="highlight">{predicted_sales_today_df['시간대'].iloc[predicted_sales_today_df['예측값'].idxmax()]}</span> (<span class="highlight">{predicted_sales_today_df['예측값'].max():,.0f}</span>건)</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-with tab2:
-    st.header(f"🗓️ {now.month}월 말일까지 일별 청약 건수 예측")
+    st.subheader(f"시간대별 청약 건수 예측 ({now.hour}시~23시):")
+    # 시간대별 예측 데이터프레임 표시
+    st.dataframe(predicted_sales_today_df[['날짜', '시간대', '예측값', '누적_건수', '달성율(%)']].style.format({
+        '누적_건수': "{:,.0f}",
+        '달성율(%)': "{:.1f}%"
+    }), use_container_width=True, hide_index=True, height=(len(predicted_sales_today_df) + 1) * 35 + 3)
 
-    current_year = now.year
-    current_month = now.month
-    last_day = monthrange(current_year, current_month)[1]
-    end_of_month = datetime(current_year, current_month, last_day)
+    # 시간대별 청약 건수 그래프 (곡선)
+    st.subheader("시간대별 청약 건수 그래프")
+    st.line_chart(predicted_sales_today_df.set_index('시간대')['예측값'])
+else:
+    st.write("오늘 예측 데이터가 없습니다.")
 
-    daily_predictions = predictor.predict(start_date=now, end_date=end_of_month, today_full_day_estimated_sales=today_full_day_estimated_sales)
+st.markdown("---")
+
+# --- 이번 달 말일까지 일별 예측 섹션 (전체 통계) ---
+st.header(f"🗓️ {now.month}월 말일까지 일별 청약 건수 예측")
+
+current_year = now.year
+current_month = now.month
+last_day = monthrange(current_year, current_month)[1]
+end_of_month = datetime(current_year, current_month, last_day)
+
+daily_predictions = predictor.predict(start_date=now, end_date=end_of_month, today_full_day_estimated_sales=today_full_day_estimated_sales)
+
+if not daily_predictions.empty:
+    cumulative_sales = today_23hr_cumulative_sales if 'today_23hr_cumulative_sales' in locals() else predictor.current_month_actual
+
+    cumulative_count_list = []
+    achievement_rate_list = []
+
+    for idx, row in daily_predictions.iterrows():
+        if row['날짜'] == today_str:
+            # 오늘 날짜는 이미 predict_today에서 누적된 값으로 시작
+            cumulative_count_list.append(cumulative_sales)
+        else:
+            cumulative_sales += row['예측값']
+            cumulative_count_list.append(cumulative_sales)
+
+        achievement_rate_list.append((cumulative_sales / predictor.target_sales * 100).round(1))
+
+    daily_predictions['누적_건수'] = cumulative_count_list
+    daily_predictions['달성율(%)'] = achievement_rate_list
+
+    st.dataframe(daily_predictions[['날짜', '예측값', '데이터타입', '누적_건수', '달성율(%)']].style.format({
+        '예측값': "{:,.0f}",
+        '누적_건수': "{:,.0f}",
+        '달성율(%)': "{:.1f}%"
+    }), use_container_width=True, hide_index=True, height=(len(daily_predictions) + 1) * 35 + 3)
 
     if not daily_predictions.empty:
-        cumulative_sales = today_23hr_cumulative_sales if 'today_23hr_cumulative_sales' in locals() else predictor.current_month_actual
+        total_month_sales_overall = daily_predictions['누적_건수'].iloc[-1]
+        achievement_rate_month_overall = (total_month_sales_overall / predictor.target_sales) * 100
+        st.metric(label=f"**{current_month}월 전체 목표 달성율 (실제 + 예측)**", value=f"{achievement_rate_month_overall:.1f}%")
+else:
+    st.write("이번 달 남은 기간에 대한 예측 데이터가 없습니다.")
 
-        cumulative_count_list = []
-        achievement_rate_list = []
+st.markdown("---")
 
-        for idx, row in daily_predictions.iterrows():
-            if row['날짜'] == today_str:
-                # 오늘 날짜는 이미 predict_today에서 누적된 값으로 시작
-                cumulative_count_list.append(cumulative_sales)
-            else:
-                cumulative_sales += row['예측값']
-                cumulative_count_list.append(cumulative_sales)
-
-            achievement_rate_list.append((cumulative_sales / predictor.target_sales * 100).round(1))
-
-        daily_predictions['누적_건수'] = cumulative_count_list
-        daily_predictions['달성율(%)'] = achievement_rate_list
-
-        st.dataframe(daily_predictions[['날짜', '예측값', '데이터타입', '누적_건수', '달성율(%)']].style.format({
-            '예측값': "{:,.0f}",
-            '누적_건수': "{:,.0f}",
-            '달성율(%)': "{:.1f}%"
-        }), use_container_width=True, hide_index=True, height=(len(daily_predictions) + 1) * 35 + 3)
-
-        if not daily_predictions.empty:
-            total_month_sales_overall = daily_predictions['누적_건수'].iloc[-1]
-            achievement_rate_month_overall = (total_month_sales_overall / predictor.target_sales) * 100
-            st.metric(label=f"**{current_month}월 전체 목표 달성율 (실제 + 예측)**", value=f"{achievement_rate_month_overall:.1f}%")
-    else:
-        st.write("이번 달 남은 기간에 대한 예측 데이터가 없습니다.")
-
-with tab3:
-    st.header("분석 리포트")
-    st.markdown("""
-    이곳에는 청약 데이터에 대한 심층적인 분석 리포트, 트렌드, 예측 모델의 정확도 등에 대한 내용이 표시될 예정입니다.
-    <ul>
-        <li>요일별 청약 트렌드</li>
-        <li>캠페인 효과 분석</li>
-        <li>과거 데이터 기반의 예측 정확도</li>
-    </ul>
-    """, unsafe_allow_html=True) # HTML 목록을 표시하기 위해 unsafe_allow_html=True 사용
+# --- 분석 리포트 섹션 (가장 하단) ---
+st.header("분석 리포트")
+st.markdown("""
+이곳에는 청약 데이터에 대한 심층적인 분석 리포트, 트렌드, 예측 모델의 정확도 등에 대한 내용이 표시될 예정입니다.
+<ul>
+    <li>요일별 청약 트렌드</li>
+    <li>캠페인 효과 분석</li>
+    <li>과거 데이터 기반의 예측 정확도</li>
+</ul>
+""", unsafe_allow_html=True)
 
 st.markdown("---")
 st.caption("Powered by Streamlit and Prophet for sales prediction.")
