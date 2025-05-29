@@ -258,7 +258,8 @@ class SalesPredictor:
                 })
                 continue
 
-            daily_total = forecast_day['yhat'].round().astype(int).sum()
+            # NaN 값을 0으로 처리 후 반올림하고 정수로 변환
+            daily_total = np.nan_to_num(forecast_day['yhat']).round().astype(int).sum()
             daily_predictions.append({
                 '날짜': date_iter.strftime('%Y-%m-%d'),
                 '예측값': daily_total,
@@ -268,90 +269,99 @@ class SalesPredictor:
         return pd.DataFrame(daily_predictions)
 
     def predict_today(self, target_time=None):
-        """오늘 시간대별 예측 (target_time 이후부터)"""
+        """오늘 시간대별 예측 (8시부터 23시까지, 실제 데이터 우선 사용)"""
         if target_time is None:
             target_time = self.current_date # KST 타임존 정보 포함
 
-        today = target_time.date() # Naive date 객체
+        today = target_time.date() # Naive date object for comparison
 
-        # get_actual_data_for_date_and_hour 함수는 naive date를 받으므로, target_time.hour를 그대로 사용
-        actual_sales_so_far_today = self.get_actual_data_for_date_and_hour(today, end_hour=target_time.hour)
+        # Define the full prediction range for today (8 AM to 11 PM)
+        start_of_day_8am = datetime(today.year, today.month, today.day, 8, 0, 0)
+        end_of_day_11pm = datetime(today.year, today.month, today.day, 23, 0, 0)
 
-        # Prophet 예측을 위한 future 데이터프레임 생성 시 naive datetime 사용
-        # start_hour는 현재 시간의 '시간'부터 시작
-        start_hour_kst = target_time.replace(minute=0, second=0, microsecond=0) # KST 타임존 정보 포함
-        end_hour_kst = target_time.replace(hour=23, minute=0, second=0, microsecond=0) # KST 타임존 정보 포함
+        # Localize these to KST and then remove timezone for Prophet
+        start_of_day_8am_kst = pytz.timezone('Asia/Seoul').localize(start_of_day_8am)
+        end_of_day_11pm_kst = pytz.timezone('Asia/Seoul').localize(end_of_day_11pm)
 
-        # Prophet은 naive datetime을 선호하므로, 타임존 정보를 제거하고 전달
-        future_today = pd.DataFrame({
-            'ds': pd.date_range(start=start_hour_kst.replace(tzinfo=None), end=end_hour_kst.replace(tzinfo=None), freq='h'),
+        future_today_full_range = pd.DataFrame({
+            'ds': pd.date_range(start=start_of_day_8am_kst, end=end_of_day_11pm_kst, freq='h'),
         })
+        future_today_full_range['ds'] = future_today_full_range['ds'].dt.tz_localize(None) # Prophet needs naive datetime
 
-        if future_today.empty:
-            total_actual_today = self.get_actual_data_for_date_and_hour(today, end_hour=24)
-            predicted_sales_today = pd.DataFrame({
-                'ds': [target_time.replace(hour=23, tzinfo=None)], # ds는 naive로 저장
-                'yhat': [0],
-                '예측값': [0],
-                '날짜': [today.strftime("%Y-%m-%d")],
-                '시간대': ["23시"],
-                '누적_예측값': [0],
-                '누적_건수': [self.current_month_actual + total_actual_today],
-                '달성율(%)': [( (self.current_month_actual + total_actual_today) / self.target_sales * 100).round(1)]
-            })
-            return predicted_sales_today, total_actual_today
-
-        future_today['hour'] = future_today['ds'].dt.hour
-        future_today['dayofweek'] = future_today['ds'].dt.dayofweek
-        future_today['month'] = future_today['ds'].dt.month
+        # Add regressors for Prophet
+        future_today_full_range['hour'] = future_today_full_range['ds'].dt.hour
+        future_today_full_range['dayofweek'] = future_today_full_range['ds'].dt.dayofweek
+        future_today_full_range['month'] = future_today_full_range['ds'].dt.month
 
         holidays_for_prediction = self.holidays.copy()
         if not holidays_for_prediction.empty:
             holidays_for_prediction['ds'] = holidays_for_prediction['ds'].dt.tz_localize(None)
 
         if not holidays_for_prediction.empty:
-            future_today['is_holiday'] = future_today['ds'].dt.date.isin(holidays_for_prediction['ds'].dt.date).astype(int)
+            future_today_full_range['is_holiday'] = future_today_full_range['ds'].dt.date.isin(holidays_for_prediction['ds'].dt.date).astype(int)
         else:
-            future_today['is_holiday'] = 0
+            future_today_full_range['is_holiday'] = 0
 
-        future_today['is_peak_hour'] = future_today['hour'].apply(lambda x: 1 if x in [14, 16] else 0)
-        future_today['is_weekend'] = future_today['dayofweek'].apply(lambda x: 1 if x >= 5 else 0)
-        future_today['week_of_month'] = ((future_today['ds'].dt.day - 1) // 7) + 1
-        future_today['sin_hour'] = np.sin(2 * np.pi * future_today['hour'] / 24)
-        future_today['cos_hour'] = np.cos(2 * np.pi * future_today['hour'] / 24)
+        future_today_full_range['is_peak_hour'] = future_today_full_range['hour'].apply(lambda x: 1 if x in [14, 16] else 0)
+        future_today_full_range['is_weekend'] = future_today_full_range['dayofweek'].apply(lambda x: 1 if x >= 5 else 0)
+        future_today_full_range['week_of_month'] = ((future_today_full_range['ds'].dt.day - 1) // 7) + 1
+        future_today_full_range['sin_hour'] = np.sin(2 * np.pi * future_today_full_range['hour'] / 24)
+        future_today_full_range['cos_hour'] = np.cos(2 * np.pi * future_today_full_range['hour'] / 24)
 
-        if future_today['is_weekend'].iloc[0] == 1 and self.model_weekend is not None:
-            forecast_today = self.model_weekend.predict(future_today)
-        elif future_today['is_weekend'].iloc[0] == 0 and self.model_weekday is not None:
-            forecast_today = self.model_weekday.predict(future_today)
+        # Predict for the full range (8 AM to 11 PM)
+        if future_today_full_range['is_weekend'].iloc[0] == 1 and self.model_weekend is not None:
+            forecast_today_full_range = self.model_weekend.predict(future_today_full_range)
+        elif future_today_full_range['is_weekend'].iloc[0] == 0 and self.model_weekday is not None:
+            forecast_today_full_range = self.model_weekday.predict(future_today_full_range)
         else:
-            # 학습 데이터가 없는 경우, 임시로 평균값 사용
-            # 실제 데이터의 'datetime'은 KST 타임존이므로, hour 비교는 문제가 없음.
+            # Fallback if no model is trained
             hourly_avg = self.data.groupby(self.data['datetime'].dt.hour)['건수'].mean().reset_index()
             hourly_avg.columns = ['hour', 'avg_sales']
+            forecast_today_full_range = pd.merge(future_today_full_range, hourly_avg, on='hour', how='left')
+            forecast_today_full_range['yhat'] = forecast_today_full_range['avg_sales'].fillna(0)
 
-            forecast_today = pd.merge(future_today, hourly_avg, on='hour', how='left')
-            forecast_today['yhat'] = forecast_today['avg_sales'].fillna(0)
+        # Get actual data for today, hour by hour
+        actual_data_today = self.data[self.data['datetime'].dt.date == today].copy()
+        actual_data_today['hour_only'] = actual_data_today['datetime'].dt.hour
+        actual_sales_by_hour = actual_data_today.groupby('hour_only')['건수'].sum().to_dict()
 
+        # Combine actual and predicted data
+        combined_predictions = []
+        current_cumulative_sales = self.current_month_actual # Start with actual sales up to yesterday
 
-        predicted_sales_today_df = forecast_today[['ds', 'yhat']].copy()
-        predicted_sales_today_df.loc[:, '예측값'] = predicted_sales_today_df['yhat'].round().astype(int)
-        predicted_sales_today_df.loc[:, '날짜'] = predicted_sales_today_df['ds'].dt.strftime("%Y-%m-%d")
-        predicted_sales_today_df.loc[:, '시간대'] = predicted_sales_today_df['ds'].dt.hour.apply(lambda x: f"{x}시")
+        for index, row in forecast_today_full_range.iterrows():
+            hour = row['ds'].hour
+            # NaN 값을 0으로 처리 후 반올림하고 정수로 변환
+            predicted_value = int(np.nan_to_num(row['yhat']).round())
+            value_to_use = predicted_value
+            data_type = '예측'
 
-        total_predicted_from_current_time = predicted_sales_today_df['예측값'].sum()
-        today_full_day_estimated_sales = actual_sales_so_far_today + total_predicted_from_current_time
+            # Use actual data if available for past/current hours
+            # 현재 시간까지는 실제 데이터가 있다면 사용하고, 없다면 예측 데이터를 사용
+            if hour <= target_time.hour:
+                if hour in actual_sales_by_hour:
+                    value_to_use = actual_sales_by_hour[hour]
+                    data_type = '실제'
+                # else: # No actual data for a past/current hour, use prediction (default)
+                #     data_type = '예측(실제없음)' # Optional: add a specific type for clarity
 
-        cumulative_predicted_so_far = 0
-        cumulative_list = []
-        for index, row in predicted_sales_today_df.iterrows():
-            cumulative_predicted_so_far += row['예측값']
-            cumulative_list.append(self.current_month_actual + actual_sales_so_far_today + cumulative_predicted_so_far)
+            current_cumulative_sales += value_to_use
 
-        predicted_sales_today_df['누적_건수'] = cumulative_list
-        predicted_sales_today_df['달성율(%)'] = (predicted_sales_today_df['누적_건수'] / self.target_sales * 100).round(1)
+            combined_predictions.append({
+                'ds': row['ds'], # Add the 'ds' column here for charting
+                '날짜': today.strftime("%Y-%m-%d"),
+                '시간대': f"{hour}시",
+                '예측값': value_to_use,
+                '누적_건수': current_cumulative_sales,
+                '달성율(%)': (current_cumulative_sales / self.target_sales * 100).round(1),
+                '데이터타입': data_type
+            })
 
-        return predicted_sales_today_df, today_full_day_estimated_sales
+        predicted_sales_today_df = pd.DataFrame(combined_predictions)
+        # Calculate today's full estimated sales based on the combined actuals/predictions for today
+        total_full_day_estimated_sales = predicted_sales_today_df['예측값'].sum()
+
+        return predicted_sales_today_df, total_full_day_estimated_sales
 
 # --- Streamlit 앱 시작 ---
 st.set_page_config(layout="wide") # 페이지 레이아웃을 넓게 설정
@@ -622,22 +632,32 @@ st.markdown(
     /* 테이블 스타일 */
     .stDataFrame {
         border-radius: var(--radius-lg);
-        overflow: hidden;
         box-shadow: var(--shadow-md);
         margin-bottom: var(--spacing-2xl);
         border: 1px solid var(--border-primary);
         background-color: #FFFFFF !important; /* 전체 테이블 배경을 흰색으로 변경 (강제 적용) */
+        /* overflow-x: hidden !important; */ /* 이 속성은 하위 요소에 의해 재정의될 수 있습니다. */
+    }
+
+    /* st.dataframe의 실제 테이블 컨테이너에 overflow-x: hidden을 강제 적용 */
+    .stDataFrame > div:first-child > div:first-child {
+        overflow-x: hidden !important;
+    }
+
+    .stDataFrame div[data-testid="stDataFrameResizable"] {
+        overflow-x: hidden !important;
     }
 
     .stDataFrame table {
         border-collapse: collapse;
         width: 100%;
         font-family: 'Inter', sans-serif;
+        table-layout: fixed; /* 컬럼 너비 고정하여 내용이 넘치지 않도록 함 */
     }
 
     .stDataFrame th {
         background-color: #FFFFFF !important; /* 헤더를 흰색으로 (강제 적용) */
-        color: var(--text-primary);
+        color: #1A1A1A !important; /* 텍스트 색상 명시적 설정 */
         font-weight: 600;
         padding: var(--spacing-lg) var(--spacing-xl);
         text-align: left;
@@ -650,7 +670,7 @@ st.markdown(
         padding: var(--spacing-md) var(--spacing-xl);
         text-align: left;
         border-bottom: 1px solid var(--border-primary);
-        color: var(--text-primary);
+        color: #1A1A1A !important; /* 텍스트 색상 명시적 설정 */
         font-size: var(--font-size-base); /* 폰트 크기 증가 */
         font-weight: 500;
         background-color: #FFFFFF !important; /* 모든 셀의 배경을 흰색으로 (강제 적용) */
@@ -986,12 +1006,12 @@ if not predicted_sales_today_df.empty:
         unsafe_allow_html=True
     )
 
-    st.subheader(f"시간대별 청약 건수 예측 ({now.hour}시~23시):")
+    st.subheader(f"시간대별 청약 건수 예측 (8시~23시):") # 문구 수정
     # 시간대별 예측 데이터프레임 표시
     st.dataframe(predicted_sales_today_df[['날짜', '시간대', '예측값', '누적_건수', '달성율(%)']].style.format({
         '누적_건수': "{:,.0f}",
         '달성율(%)': "{:.1f}%"
-    }), use_container_width=True, hide_index=True, height=(len(predicted_sales_today_df) + 1) * 45 + 3) # 높이 조정
+    }), use_container_width=True, hide_index=True, height=(len(predicted_sales_today_df) * 35 + 38)) # 높이 조정
 
     # 시간대별 청약 건수 그래프 (곡선)
     st.subheader("시간대별 청약 건수 그래프")
@@ -1017,6 +1037,10 @@ end_of_month = datetime(current_year, current_month, last_day, 23, 59, 59) # 시
 # predict 함수에 date 객체를 직접 전달하도록 수정
 daily_predictions = predictor.predict(start_date=now.date(), end_date=end_of_month.date(), today_full_day_estimated_sales=today_full_day_estimated_sales)
 
+# total_month_sales_overall과 achievement_month_overall을 초기화합니다.
+total_month_sales_overall = predictor.current_month_actual # 기본값으로 현재 월 실제 데이터 사용
+achievement_rate_month_overall = (total_month_sales_overall / predictor.target_sales * 100).round(1)
+
 if not daily_predictions.empty:
     cumulative_sales = today_23hr_cumulative_sales if 'today_23hr_cumulative_sales' in locals() else predictor.current_month_actual
 
@@ -1040,14 +1064,15 @@ if not daily_predictions.empty:
         '예측값': "{:,.0f}",
         '누적_건수': "{:,.0f}",
         '달성율(%)': "{:.1f}%"
-    }), use_container_width=True, hide_index=True, height=(len(daily_predictions) + 1) * 45 + 3) # 높이 조정
+    }), use_container_width=True, hide_index=True, height=(len(daily_predictions) * 35 + 38)) # 높이 조정
 
-    if not daily_predictions.empty:
-        total_month_sales_overall = daily_predictions['누적_건수'].iloc[-1]
-        achievement_rate_month_overall = (total_month_sales_overall / predictor.target_sales) * 100
-        st.metric(label=f"**{current_month}월 전체 목표 달성율 (실제 + 예측)**", value=f"{achievement_rate_month_overall:.1f}%")
+    # if not daily_predictions.empty: # 이 조건문은 이제 불필요합니다.
+    total_month_sales_overall = daily_predictions['누적_건수'].iloc[-1]
+    achievement_rate_month_overall = (total_month_sales_overall / predictor.target_sales) * 100
+    st.metric(label=f"**{current_month}월 전체 목표 달성율 (실제 + 예측)**", value=f"{achievement_rate_month_overall:.1f}%")
 else:
     st.write("이번 달 남은 기간에 대한 예측 데이터가 없습니다.")
+    st.metric(label=f"**{current_month}월 전체 목표 달성율 (실제 + 예측)**", value=f"{achievement_rate_month_overall:.1f}%") # 예측 데이터가 없을 때도 메트릭 표시
 
 st.markdown("---")
 
