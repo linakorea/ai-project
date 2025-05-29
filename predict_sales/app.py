@@ -636,16 +636,23 @@ st.markdown(
         margin-bottom: var(--spacing-2xl);
         border: 1px solid var(--border-primary);
         background-color: #FFFFFF !important; /* 전체 테이블 배경을 흰색으로 변경 (강제 적용) */
-        /* overflow-x: hidden !important; */ /* 이 속성은 하위 요소에 의해 재정의될 수 있습니다. */
+        overflow: hidden !important; /* Added this to cover all bases for the main container */
     }
 
     /* st.dataframe의 실제 테이블 컨테이너에 overflow-x: hidden을 강제 적용 */
-    .stDataFrame > div:first-child > div:first-child {
-        overflow-x: hidden !important;
+    /* Streamlit 1.x에서 st.dataframe의 내부 구조를 고려하여 더 넓은 범위의 숨김 적용 */
+    .stDataFrame > div {
+        overflow: hidden !important; /* Apply to all direct children of stDataFrame */
+    }
+    .stDataFrame > div > div {
+        overflow: hidden !important; /* Apply to nested children */
+    }
+    .stDataFrame > div > div > div {
+        overflow: hidden !important; /* Apply to even deeper nested children */
     }
 
     .stDataFrame div[data-testid="stDataFrameResizable"] {
-        overflow-x: hidden !important;
+        overflow: hidden !important; /* Ensure this specific resizable div also hides overflow */
     }
 
     .stDataFrame table {
@@ -653,6 +660,7 @@ st.markdown(
         width: 100%;
         font-family: 'Inter', sans-serif;
         table-layout: fixed; /* 컬럼 너비 고정하여 내용이 넘치지 않도록 함 */
+        overflow: hidden !important; /* Apply to the table itself */
     }
 
     .stDataFrame th {
