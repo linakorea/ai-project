@@ -1035,27 +1035,37 @@ last_day = monthrange(current_year, current_month)[1]
 end_of_month = datetime(current_year, current_month, last_day, 23, 59, 59) # 시분초 포함
 
 # predict 함수에 date 객체를 직접 전달하도록 수정
-daily_predictions = predictor.predict(start_date=now.date(), end_date=end_of_month.date(), today_full_day_estimated_sales=today_full_day_estimated_sales)
+# 월의 1일부터 예측을 시작하도록 변경
+daily_predictions = predictor.predict(
+    start_date=datetime(current_year, current_month, 1).date(), # 월의 1일부터 시작
+    end_date=end_of_month.date(),
+    today_full_day_estimated_sales=today_full_day_estimated_sales
+)
 
 # total_month_sales_overall과 achievement_month_overall을 초기화합니다.
-total_month_sales_overall = predictor.current_month_actual # 기본값으로 현재 월 실제 데이터 사용
-achievement_rate_month_overall = (total_month_sales_overall / predictor.target_sales * 100).round(1)
+total_month_sales_overall = 0 # 월별 누적 합계를 0으로 초기화
+achievement_rate_month_overall = 0.0 # 초기 달성율
 
 if not daily_predictions.empty:
-    cumulative_sales = today_23hr_cumulative_sales if 'today_23hr_cumulative_sales' in locals() else predictor.current_month_actual
-
+    cumulative_sales = 0 # 월별 누적 합계를 0으로 초기화
     cumulative_count_list = []
     achievement_rate_list = []
 
     for idx, row in daily_predictions.iterrows():
-        if row['날짜'] == today_str:
-            # 오늘 날짜는 이미 predict_today에서 누적된 값으로 시작
-            cumulative_count_list.append(cumulative_sales)
-        else:
-            cumulative_sales += row['예측값']
-            cumulative_count_list.append(cumulative_sales)
+        cumulative_sales += row['예측값'] # 각 일자의 예측값을 누적
+        cumulative_count_list.append(cumulative_sales)
 
-        achievement_rate_list.append((cumulative_sales / predictor.target_sales * 100).round(1))
+        # 달성율 계산 시 NaN 또는 inf 방지 로직 추가
+        if predictor.target_sales == 0:
+            current_achievement_rate = 0.0
+        else:
+            raw_percentage = (cumulative_sales / predictor.target_sales) * 100
+            if np.isnan(raw_percentage) or np.isinf(raw_percentage):
+                current_achievement_rate = 0.0
+            else:
+                current_achievement_rate = round(float(raw_percentage), 1) # Python의 내장 round 함수 사용
+
+        achievement_rate_list.append(current_achievement_rate)
 
     daily_predictions['누적_건수'] = cumulative_count_list
     daily_predictions['달성율(%)'] = achievement_rate_list
@@ -1066,9 +1076,17 @@ if not daily_predictions.empty:
         '달성율(%)': "{:.1f}%"
     }), use_container_width=True, hide_index=True, height=(len(daily_predictions) * 35 + 38)) # 높이 조정
 
-    # if not daily_predictions.empty: # 이 조건문은 이제 불필요합니다.
     total_month_sales_overall = daily_predictions['누적_건수'].iloc[-1]
-    achievement_rate_month_overall = (total_month_sales_overall / predictor.target_sales) * 100
+    # 최종 달성율 계산 시에도 NaN 또는 inf 방지 로직 적용
+    if predictor.target_sales == 0:
+        achievement_rate_month_overall = 0.0
+    else:
+        raw_overall_percentage = (total_month_sales_overall / predictor.target_sales) * 100
+        if np.isnan(raw_overall_percentage) or np.isinf(raw_overall_percentage):
+            achievement_rate_month_overall = 0.0
+        else:
+            achievement_rate_month_overall = round(float(raw_overall_percentage), 1)
+
     st.metric(label=f"**{current_month}월 전체 목표 달성율 (실제 + 예측)**", value=f"{achievement_rate_month_overall:.1f}%")
 else:
     st.write("이번 달 남은 기간에 대한 예측 데이터가 없습니다.")
