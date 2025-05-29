@@ -11,7 +11,7 @@ import pytz # pytz 라이브러리 추가
 
 # --- SalesPredictor 클래스 정의 ---
 class SalesPredictor:
-    def __init__(self, data_dir, target_sales=23549):
+    def __init__(self, data_dir, target_sales=23234):
         # data_dir은 외부에서 주입되는 완전한 절대 경로를 기대합니다.
         self.data_dir = data_dir
         self.target_sales = target_sales
@@ -604,7 +604,7 @@ target_sales_input = st.sidebar.number_input(
     "월 목표 청약 건수:",
     min_value=1000,
     max_value=100000,
-    value=23549,
+    value=23234,
     step=100
 )
 
