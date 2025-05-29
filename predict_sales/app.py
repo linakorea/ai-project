@@ -7,7 +7,6 @@ from prophet import Prophet
 import json
 import numpy as np
 from calendar import monthrange
-import pytz # pytz 라이브러리 추가
 
 # --- SalesPredictor 클래스 정의 ---
 class SalesPredictor:
@@ -20,8 +19,7 @@ class SalesPredictor:
         self.holidays = None
         self.data = None
         self.current_month_actual = None
-        # 한국 시간(KST)으로 현재 시간 설정
-        self.current_date = datetime.now(pytz.timezone('Asia/Seoul'))
+        self.current_date = datetime.now()
 
     def load_data(self):
         """데이터 로드 및 전처리"""
@@ -58,9 +56,7 @@ class SalesPredictor:
             raise ValueError("데이터 파일을 로드할 수 없습니다.")
 
         # 데이터 전처리 및 특징 추가
-        # 데이터프레임의 'datetime' 열을 한국 시간으로 변환
         self.data['datetime'] = self.data['일자'] + pd.to_timedelta(self.data['시간대'], unit='h')
-        self.data['datetime'] = self.data['datetime'].dt.tz_localize('UTC').dt.tz_convert('Asia/Seoul') # UTC로 인식 후 KST로 변환
         self.data = self.data.sort_values('datetime')
         self.data['hour'] = self.data['datetime'].dt.hour
         self.data['dayofweek'] = self.data['datetime'].dt.dayofweek
@@ -84,7 +80,7 @@ class SalesPredictor:
                 holidays_data = json.load(f)
             self.holidays = pd.DataFrame({
                 'holiday': [name for name in holidays_data.values()],
-                'ds': pd.to_datetime(list(holidays_data.keys())).tz_localize('Asia/Seoul'), # 공휴일도 KST로 설정
+                'ds': pd.to_datetime(list(holidays_data.keys())),
                 'lower_window': 0,
                 'upper_window': 1
             })
@@ -111,26 +107,16 @@ class SalesPredictor:
                 (self.data['datetime'].dt.month <= 12)
             ]
 
-        weekday_data = training_data[training_data['is_weekend'] == 0].copy()
-        weekend_data = training_data[training_data['is_weekend'] == 1].copy()
+        weekday_data = training_data[training_data['is_weekend'] == 0]
+        weekend_data = training_data[training_data['is_weekend'] == 1]
 
-        # Prophet 입력 데이터프레임의 'ds' 열에 타임존 정보 제거 (Prophet은 naive datetime을 선호)
         prophet_weekday = weekday_data[['datetime', '건수', 'hour', 'dayofweek', 'month', 'is_holiday', 'is_peak_hour', 'week_of_month', 'sin_hour', 'cos_hour']].rename(columns={'datetime': 'ds', '건수': 'y'})
-        prophet_weekday['ds'] = prophet_weekday['ds'].dt.tz_localize(None) # 타임존 제거
         prophet_weekend = weekend_data[['datetime', '건수', 'hour', 'dayofweek', 'month', 'is_holiday', 'is_peak_hour', 'week_of_month', 'sin_hour', 'cos_hour']].rename(columns={'datetime': 'ds', '건수': 'y'})
-        prophet_weekend['ds'] = prophet_weekend['ds'].dt.tz_localize(None) # 타임존 제거
-
-        # 공휴일 데이터도 타임존 제거 (Prophet 학습 시 필요)
-        holidays_for_prophet = self.holidays.copy()
-        if not holidays_for_prophet.empty:
-            holidays_for_prophet['ds'] = holidays_for_prophet['ds'].dt.tz_localize(None)
-
 
         if not prophet_weekday.empty:
             self.model_weekday = Prophet(
                 yearly_seasonality=False, weekly_seasonality=True, daily_seasonality=False,
-                holidays=holidays_for_prophet if not holidays_for_prophet.empty else None,
-                changepoint_prior_scale=0.05, holidays_prior_scale=10
+                holidays=self.holidays, changepoint_prior_scale=0.05, holidays_prior_scale=10
             )
             self.model_weekday.add_seasonality(name='hourly', period=1, fourier_order=15)
             self.model_weekday.add_regressor('hour')
@@ -146,8 +132,7 @@ class SalesPredictor:
         if not prophet_weekend.empty:
             self.model_weekend = Prophet(
                 yearly_seasonality=False, weekly_seasonality=True, daily_seasonality=False,
-                holidays=holidays_for_prophet if not holidays_for_prophet.empty else None,
-                changepoint_prior_scale=0.05, holidays_prior_scale=10
+                holidays=self.holidays, changepoint_prior_scale=0.05, holidays_prior_scale=10
             )
             self.model_weekend.add_seasonality(name='hourly', period=1, fourier_order=15)
             self.model_weekend.add_regressor('hour')
@@ -165,23 +150,18 @@ class SalesPredictor:
         current_year = self.current_date.year
         current_month = self.current_date.month
 
-        # `astimezone(pytz.utc).date()` 를 사용하여 비교 시 타임존 일관성 유지
-        yesterday_utc = (self.current_date - timedelta(days=1)).astimezone(pytz.utc).date()
-
+        yesterday = self.current_date - timedelta(days=1)
 
         current_month_data_until_yesterday = self.data[
             (self.data['datetime'].dt.year == current_year) &
             (self.data['datetime'].dt.month == current_month) &
-            (self.data['datetime'].dt.tz_convert('Asia/Seoul').dt.date <= (self.current_date - timedelta(days=1)).date()) # KST 기준으로 어제까지
+            (self.data['datetime'].dt.date <= yesterday.date())
         ]
 
         self.current_month_actual = current_month_data_until_yesterday['건수'].sum() if not current_month_data_until_yesterday.empty else 0
 
-
     def get_actual_data_for_date_and_hour(self, target_date, end_hour=23):
         """특정 날짜의 특정 시간까지의 실제 데이터 합계 반환"""
-        # target_date는 naive date 객체이므로, data['datetime']의 date 부분을 비교
-        # data['datetime']은 KST 타임존 정보를 가지고 있으므로, date만 비교
         actual_data = self.data[
             (self.data['datetime'].dt.date == target_date) &
             (self.data['datetime'].dt.hour < end_hour)
@@ -190,26 +170,15 @@ class SalesPredictor:
 
     def predict(self, start_date, end_date, today_full_day_estimated_sales=None):
         """지정된 기간 동안 예측 수행 (실제 데이터가 있으면 우선 사용)"""
-        # start_date와 end_date를 KST로 타임존 설정 후 naive datetime으로 변환 (Prophet 예측용)
-        future_start_kst = start_date.replace(hour=8, minute=0, second=0, microsecond=0).astimezone(pytz.timezone('Asia/Seoul'))
-        future_end_kst = end_date.replace(hour=23, minute=0, second=0, microsecond=0).astimezone(pytz.timezone('Asia/Seoul'))
-
         future = pd.DataFrame({
-            'ds': pd.date_range(start=future_start_kst, end=future_end_kst, freq='h'),
+            'ds': pd.date_range(start=start_date.replace(hour=8), end=end_date.replace(hour=23), freq='h'),
         })
-        future['ds'] = future['ds'].dt.tz_localize(None) # Prophet 입력에 맞게 naive datetime으로 변환
-
         future['hour'] = future['ds'].dt.hour
         future['dayofweek'] = future['ds'].dt.dayofweek
         future['month'] = future['ds'].dt.month
 
-        # 공휴일 데이터도 Prophet 예측 입력에 맞게 naive datetime으로 변환하여 사용
-        holidays_for_prediction = self.holidays.copy()
-        if not holidays_for_prediction.empty:
-            holidays_for_prediction['ds'] = holidays_for_prediction['ds'].dt.tz_localize(None)
-
-        if not holidays_for_prediction.empty:
-            future['is_holiday'] = future['ds'].dt.date.isin(holidays_for_prediction['ds'].dt.date).astype(int)
+        if self.holidays is not None and not self.holidays.empty:
+            future['is_holiday'] = future['ds'].dt.date.isin(self.holidays['ds'].dt.date).astype(int)
         else:
             future['is_holiday'] = 0
 
@@ -220,7 +189,6 @@ class SalesPredictor:
         future['cos_hour'] = np.cos(2 * np.pi * future['hour'] / 24)
 
         daily_predictions = []
-        # `current_date`는 KST 타임존 정보를 포함하고 있으므로 `.date()`로 비교
         today_date_obj = self.current_date.date()
 
         for date_iter in pd.date_range(start=start_date.date(), end=end_date.date(), freq='D'):
@@ -242,7 +210,6 @@ class SalesPredictor:
                     })
                     continue
 
-            # Prophet 예측을 위해 future 데이터프레임에서 naive datetime으로 필터링
             day_data = future[future['ds'].dt.date == date_iter.date()]
             if day_data.empty:
                 continue
@@ -273,27 +240,23 @@ class SalesPredictor:
     def predict_today(self, target_time=None):
         """오늘 시간대별 예측 (target_time 이후부터)"""
         if target_time is None:
-            target_time = self.current_date # KST 타임존 정보 포함
+            target_time = self.current_date
 
-        today = target_time.date() # Naive date 객체
+        today = target_time.date()
 
-        # get_actual_data_for_date_and_hour 함수는 naive date를 받으므로, target_time.hour를 그대로 사용
         actual_sales_so_far_today = self.get_actual_data_for_date_and_hour(today, end_hour=target_time.hour)
 
-        # Prophet 예측을 위한 future 데이터프레임 생성 시 naive datetime 사용
-        start_hour_naive = target_time.replace(minute=0, second=0, microsecond=0).replace(tzinfo=None)
-        end_hour_naive = target_time.replace(hour=23, minute=0, second=0, microsecond=0).replace(tzinfo=None)
-
+        start_hour = target_time.replace(minute=0, second=0, microsecond=0)
+        end_hour = target_time.replace(hour=23, minute=0, second=0, microsecond=0)
 
         future_today = pd.DataFrame({
-            'ds': pd.date_range(start=start_hour_naive, end=end_hour_naive, freq='h'),
+            'ds': pd.date_range(start=start_hour, end=end_hour, freq='h'),
         })
-
 
         if future_today.empty:
             total_actual_today = self.get_actual_data_for_date_and_hour(today, end_hour=24)
             predicted_sales_today = pd.DataFrame({
-                'ds': [target_time.replace(hour=23, tzinfo=None)], # ds는 naive로 저장
+                'ds': [target_time.replace(hour=23)],
                 'yhat': [0],
                 '예측값': [0],
                 '날짜': [today.strftime("%Y-%m-%d")],
@@ -308,16 +271,10 @@ class SalesPredictor:
         future_today['dayofweek'] = future_today['ds'].dt.dayofweek
         future_today['month'] = future_today['ds'].dt.month
 
-        holidays_for_prediction = self.holidays.copy()
-        if not holidays_for_prediction.empty:
-            holidays_for_prediction['ds'] = holidays_for_prediction['ds'].dt.tz_localize(None)
-
-
-        if not holidays_for_prediction.empty:
-            future_today['is_holiday'] = future_today['ds'].dt.date.isin(holidays_for_prediction['ds'].dt.date).astype(int)
+        if self.holidays is not None and not self.holidays.empty:
+            future_today['is_holiday'] = future_today['ds'].dt.date.isin(self.holidays['ds'].dt.date).astype(int)
         else:
             future_today['is_holiday'] = 0
-
 
         future_today['is_peak_hour'] = future_today['hour'].apply(lambda x: 1 if x in [14, 16] else 0)
         future_today['is_weekend'] = future_today['dayofweek'].apply(lambda x: 1 if x >= 5 else 0)
@@ -330,14 +287,11 @@ class SalesPredictor:
         elif future_today['is_weekend'].iloc[0] == 0 and self.model_weekday is not None:
             forecast_today = self.model_weekday.predict(future_today)
         else:
-            # 학습 데이터가 없는 경우, 임시로 평균값 사용
-            # 실제 데이터의 'datetime'은 KST 타임존이므로, hour 비교는 문제가 없음.
             hourly_avg = self.data.groupby(self.data['datetime'].dt.hour)['건수'].mean().reset_index()
             hourly_avg.columns = ['hour', 'avg_sales']
 
             forecast_today = pd.merge(future_today, hourly_avg, on='hour', how='left')
             forecast_today['yhat'] = forecast_today['avg_sales'].fillna(0)
-
 
         predicted_sales_today_df = forecast_today[['ds', 'yhat']].copy()
         predicted_sales_today_df.loc[:, '예측값'] = predicted_sales_today_df['yhat'].round().astype(int)
@@ -572,11 +526,10 @@ except Exception as e:
     st.error(f"예측기 초기화 또는 학습 중 알 수 없는 오류가 발생했습니다: {e}")
     st.stop()
 
-# 현재 시간은 SalesPredictor 클래스 생성 시 이미 한국 시간으로 설정되어 있음
 now = predictor.current_date
 today_str = now.strftime("%Y-%m-%d")
 
-st.write(f"현재 시간: **{now.strftime('%Y-%m-%d %H:%M:%S (KST)')}**") # KST 추가
+st.write(f"현재 시간: **{now.strftime('%Y-%m-%d %H:%M:%S')}**")
 st.markdown("---")
 
 # --- 주요 정보 카드 (대시보드 상단) ---
