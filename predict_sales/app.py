@@ -7,6 +7,7 @@ from prophet import Prophet
 import json
 import numpy as np
 from calendar import monthrange
+import pytz # pytz 라이브러리 추가
 
 # --- SalesPredictor 클래스 정의 ---
 class SalesPredictor:
@@ -19,7 +20,8 @@ class SalesPredictor:
         self.holidays = None
         self.data = None
         self.current_month_actual = None
-        self.current_date = datetime.now()
+        # 한국 시간(KST)으로 현재 시간 설정
+        self.current_date = datetime.now(pytz.timezone('Asia/Seoul'))
 
     def load_data(self):
         """데이터 로드 및 전처리"""
@@ -56,7 +58,9 @@ class SalesPredictor:
             raise ValueError("데이터 파일을 로드할 수 없습니다.")
 
         # 데이터 전처리 및 특징 추가
+        # 기존 데이터가 타임존 정보가 없는 날짜/시간이므로, 먼저 KST로 로컬라이즈
         self.data['datetime'] = self.data['일자'] + pd.to_timedelta(self.data['시간대'], unit='h')
+        self.data['datetime'] = self.data['datetime'].dt.tz_localize('Asia/Seoul') # KST로 명시적 지정
         self.data = self.data.sort_values('datetime')
         self.data['hour'] = self.data['datetime'].dt.hour
         self.data['dayofweek'] = self.data['datetime'].dt.dayofweek
@@ -80,12 +84,12 @@ class SalesPredictor:
                 holidays_data = json.load(f)
             self.holidays = pd.DataFrame({
                 'holiday': [name for name in holidays_data.values()],
-                'ds': pd.to_datetime(list(holidays_data.keys())),
+                'ds': pd.to_datetime(list(holidays_data.keys())).tz_localize('Asia/Seoul'), # 공휴일도 KST로 설정
                 'lower_window': 0,
                 'upper_window': 1
             })
         except FileNotFoundError:
-            st.warning(f"경로: '{holidays_file}'에서 공휴일 파일을 찾을 수 없습니다. 공휴일 없이 진행합니다.")
+            st.warning(f"경고: 경로: '{holidays_file}'에서 공휴일 파일을 찾을 수 없습니다. 공휴일 없이 진행합니다.")
             self.holidays = pd.DataFrame(columns=['holiday', 'ds', 'lower_window', 'upper_window'])
         except json.JSONDecodeError:
             st.error(f"오류: 공휴일 파일 '{holidays_file}'이 유효한 JSON 형식이 아닙니다.")
@@ -99,24 +103,34 @@ class SalesPredictor:
         training_data = self.data[
             (self.data['datetime'].dt.year == current_year) &
             (self.data['datetime'].dt.month <= current_month)
-        ]
+        ].copy() # SettingWithCopyWarning 방지
 
         if training_data.empty:
             training_data = self.data[
                 (self.data['datetime'].dt.month >= 1) &
                 (self.data['datetime'].dt.month <= 12)
-            ]
+            ].copy() # SettingWithCopyWarning 방지
 
-        weekday_data = training_data[training_data['is_weekend'] == 0]
-        weekend_data = training_data[training_data['is_weekend'] == 1]
+        weekday_data = training_data[training_data['is_weekend'] == 0].copy()
+        weekend_data = training_data[training_data['is_weekend'] == 1].copy()
 
+        # Prophet 입력 데이터프레임의 'ds' 열에 타임존 정보 제거 (Prophet은 naive datetime을 선호)
         prophet_weekday = weekday_data[['datetime', '건수', 'hour', 'dayofweek', 'month', 'is_holiday', 'is_peak_hour', 'week_of_month', 'sin_hour', 'cos_hour']].rename(columns={'datetime': 'ds', '건수': 'y'})
+        prophet_weekday['ds'] = prophet_weekday['ds'].dt.tz_localize(None) # 타임존 제거
         prophet_weekend = weekend_data[['datetime', '건수', 'hour', 'dayofweek', 'month', 'is_holiday', 'is_peak_hour', 'week_of_month', 'sin_hour', 'cos_hour']].rename(columns={'datetime': 'ds', '건수': 'y'})
+        prophet_weekend['ds'] = prophet_weekend['ds'].dt.tz_localize(None) # 타임존 제거
+
+        # 공휴일 데이터도 타임존 제거 (Prophet 학습 시 필요)
+        holidays_for_prophet = self.holidays.copy()
+        if not holidays_for_prophet.empty:
+            holidays_for_prophet['ds'] = holidays_for_prophet['ds'].dt.tz_localize(None)
+
 
         if not prophet_weekday.empty:
             self.model_weekday = Prophet(
                 yearly_seasonality=False, weekly_seasonality=True, daily_seasonality=False,
-                holidays=self.holidays, changepoint_prior_scale=0.05, holidays_prior_scale=10
+                holidays=holidays_for_prophet if not holidays_for_prophet.empty else None,
+                changepoint_prior_scale=0.05, holidays_prior_scale=10
             )
             self.model_weekday.add_seasonality(name='hourly', period=1, fourier_order=15)
             self.model_weekday.add_regressor('hour')
@@ -132,7 +146,8 @@ class SalesPredictor:
         if not prophet_weekend.empty:
             self.model_weekend = Prophet(
                 yearly_seasonality=False, weekly_seasonality=True, daily_seasonality=False,
-                holidays=self.holidays, changepoint_prior_scale=0.05, holidays_prior_scale=10
+                holidays=holidays_for_prophet if not holidays_for_prophet.empty else None,
+                changepoint_prior_scale=0.05, holidays_prior_scale=10
             )
             self.model_weekend.add_seasonality(name='hourly', period=1, fourier_order=15)
             self.model_weekend.add_regressor('hour')
@@ -150,18 +165,21 @@ class SalesPredictor:
         current_year = self.current_date.year
         current_month = self.current_date.month
 
-        yesterday = self.current_date - timedelta(days=1)
+        yesterday_kst_date = (self.current_date - timedelta(days=1)).date()
 
         current_month_data_until_yesterday = self.data[
             (self.data['datetime'].dt.year == current_year) &
             (self.data['datetime'].dt.month == current_month) &
-            (self.data['datetime'].dt.date <= yesterday.date())
+            (self.data['datetime'].dt.date <= yesterday_kst_date) # KST 기준으로 어제까지
         ]
 
         self.current_month_actual = current_month_data_until_yesterday['건수'].sum() if not current_month_data_until_yesterday.empty else 0
 
+
     def get_actual_data_for_date_and_hour(self, target_date, end_hour=23):
         """특정 날짜의 특정 시간까지의 실제 데이터 합계 반환"""
+        # target_date는 naive date 객체이므로, data['datetime']의 date 부분을 비교
+        # data['datetime']은 KST 타임존 정보를 가지고 있으므로, date만 비교
         actual_data = self.data[
             (self.data['datetime'].dt.date == target_date) &
             (self.data['datetime'].dt.hour < end_hour)
@@ -170,15 +188,27 @@ class SalesPredictor:
 
     def predict(self, start_date, end_date, today_full_day_estimated_sales=None):
         """지정된 기간 동안 예측 수행 (실제 데이터가 있으면 우선 사용)"""
+        # start_date와 end_date를 KST로 타임존 설정 후 naive datetime으로 변환 (Prophet 예측용)
+        # start_date와 end_date는 Streamlit에서 넘어올 때 naive datetime일 수 있으므로, KST로 로컬라이즈 후 naive로 변환
+        start_date_kst = pytz.timezone('Asia/Seoul').localize(start_date.replace(hour=8, minute=0, second=0, microsecond=0))
+        end_date_kst = pytz.timezone('Asia/Seoul').localize(end_date.replace(hour=23, minute=0, second=0, microsecond=0))
+
         future = pd.DataFrame({
-            'ds': pd.date_range(start=start_date.replace(hour=8), end=end_date.replace(hour=23), freq='h'),
+            'ds': pd.date_range(start=start_date_kst, end=end_date_kst, freq='h'),
         })
+        future['ds'] = future['ds'].dt.tz_localize(None) # Prophet 입력에 맞게 naive datetime으로 변환
+
         future['hour'] = future['ds'].dt.hour
         future['dayofweek'] = future['ds'].dt.dayofweek
         future['month'] = future['ds'].dt.month
 
-        if self.holidays is not None and not self.holidays.empty:
-            future['is_holiday'] = future['ds'].dt.date.isin(self.holidays['ds'].dt.date).astype(int)
+        # 공휴일 데이터도 Prophet 예측 입력에 맞게 naive datetime으로 변환하여 사용
+        holidays_for_prediction = self.holidays.copy()
+        if not holidays_for_prediction.empty:
+            holidays_for_prediction['ds'] = holidays_for_prediction['ds'].dt.tz_localize(None)
+
+        if not holidays_for_prediction.empty:
+            future['is_holiday'] = future['ds'].dt.date.isin(holidays_for_prediction['ds'].dt.date).astype(int)
         else:
             future['is_holiday'] = 0
 
@@ -189,6 +219,7 @@ class SalesPredictor:
         future['cos_hour'] = np.cos(2 * np.pi * future['hour'] / 24)
 
         daily_predictions = []
+        # `current_date`는 KST 타임존 정보를 포함하고 있으므로 `.date()`로 비교
         today_date_obj = self.current_date.date()
 
         for date_iter in pd.date_range(start=start_date.date(), end=end_date.date(), freq='D'):
@@ -210,6 +241,7 @@ class SalesPredictor:
                     })
                     continue
 
+            # Prophet 예측을 위해 future 데이터프레임에서 naive datetime으로 필터링
             day_data = future[future['ds'].dt.date == date_iter.date()]
             if day_data.empty:
                 continue
@@ -240,23 +272,27 @@ class SalesPredictor:
     def predict_today(self, target_time=None):
         """오늘 시간대별 예측 (target_time 이후부터)"""
         if target_time is None:
-            target_time = self.current_date
+            target_time = self.current_date # KST 타임존 정보 포함
 
-        today = target_time.date()
+        today = target_time.date() # Naive date 객체
 
+        # get_actual_data_for_date_and_hour 함수는 naive date를 받으므로, target_time.hour를 그대로 사용
         actual_sales_so_far_today = self.get_actual_data_for_date_and_hour(today, end_hour=target_time.hour)
 
-        start_hour = target_time.replace(minute=0, second=0, microsecond=0)
-        end_hour = target_time.replace(hour=23, minute=0, second=0, microsecond=0)
+        # Prophet 예측을 위한 future 데이터프레임 생성 시 naive datetime 사용
+        # start_hour는 현재 시간의 '시간'부터 시작
+        start_hour_kst = target_time.replace(minute=0, second=0, microsecond=0) # KST 타임존 정보 포함
+        end_hour_kst = target_time.replace(hour=23, minute=0, second=0, microsecond=0) # KST 타임존 정보 포함
 
+        # Prophet은 naive datetime을 선호하므로, 타임존 정보를 제거하고 전달
         future_today = pd.DataFrame({
-            'ds': pd.date_range(start=start_hour, end=end_hour, freq='h'),
+            'ds': pd.date_range(start=start_hour_kst.replace(tzinfo=None), end=end_hour_kst.replace(tzinfo=None), freq='h'),
         })
 
         if future_today.empty:
             total_actual_today = self.get_actual_data_for_date_and_hour(today, end_hour=24)
             predicted_sales_today = pd.DataFrame({
-                'ds': [target_time.replace(hour=23)],
+                'ds': [target_time.replace(hour=23, tzinfo=None)], # ds는 naive로 저장
                 'yhat': [0],
                 '예측값': [0],
                 '날짜': [today.strftime("%Y-%m-%d")],
@@ -271,8 +307,12 @@ class SalesPredictor:
         future_today['dayofweek'] = future_today['ds'].dt.dayofweek
         future_today['month'] = future_today['ds'].dt.month
 
-        if self.holidays is not None and not self.holidays.empty:
-            future_today['is_holiday'] = future_today['ds'].dt.date.isin(self.holidays['ds'].dt.date).astype(int)
+        holidays_for_prediction = self.holidays.copy()
+        if not holidays_for_prediction.empty:
+            holidays_for_prediction['ds'] = holidays_for_prediction['ds'].dt.tz_localize(None)
+
+        if not holidays_for_prediction.empty:
+            future_today['is_holiday'] = future_today['ds'].dt.date.isin(holidays_for_prediction['ds'].dt.date).astype(int)
         else:
             future_today['is_holiday'] = 0
 
@@ -287,11 +327,14 @@ class SalesPredictor:
         elif future_today['is_weekend'].iloc[0] == 0 and self.model_weekday is not None:
             forecast_today = self.model_weekday.predict(future_today)
         else:
+            # 학습 데이터가 없는 경우, 임시로 평균값 사용
+            # 실제 데이터의 'datetime'은 KST 타임존이므로, hour 비교는 문제가 없음.
             hourly_avg = self.data.groupby(self.data['datetime'].dt.hour)['건수'].mean().reset_index()
             hourly_avg.columns = ['hour', 'avg_sales']
 
             forecast_today = pd.merge(future_today, hourly_avg, on='hour', how='left')
             forecast_today['yhat'] = forecast_today['avg_sales'].fillna(0)
+
 
         predicted_sales_today_df = forecast_today[['ds', 'yhat']].copy()
         predicted_sales_today_df.loc[:, '예측값'] = predicted_sales_today_df['yhat'].round().astype(int)
@@ -315,140 +358,178 @@ class SalesPredictor:
 # --- Streamlit 앱 시작 ---
 st.set_page_config(layout="wide") # 페이지 레이아웃을 넓게 설정
 
-# 커스텀 CSS (이전 디자인의 주요 스타일을 Streamlit에 적용)
+# 커스텀 CSS (새로운 디자인 적용)
 st.markdown(
     """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
 
+    :root {
+        --primary-color: #4A90E2; /* A professional, clear blue */
+        --secondary-color: #50E3C2; /* A fresh, complementary green-blue */
+        --text-dark: #333333;
+        --text-medium: #555555;
+        --text-light: #777777;
+        --background-light: #F8F9FA; /* Very light gray */
+        --background-card: #FFFFFF;
+        --border-color: #E0E0E0;
+        --shadow-light: rgba(0, 0, 0, 0.05);
+        --shadow-medium: rgba(0, 0, 0, 0.1);
+        --border-radius-card: 12px;
+        --border-radius-small: 8px;
+    }
+
     html, body, [class*="st-emotion"] {
         font-family: 'Noto Sans KR', sans-serif;
-        color: #333;
+        color: var(--text-dark);
         line-height: 1.6;
-        font-size: 1em; /* 기본 폰트 크기 조정 */
+        font-size: 1em;
     }
 
     /* Streamlit 기본 여백 제거 및 배경색 설정 */
     .stApp {
-        background-color: #F8F8F8; /* 아주 연한 회색 배경 (흰색에 가까움) */
+        background-color: var(--background-light);
+        padding: 20px; /* Add some padding around the entire app */
     }
 
-    /* 컨테이너 스타일 (이전 HTML의 .container와 유사) */
-    .st-emotion-cache-z5fcl4, .st-emotion-cache-1c7y2vl { /* Streamlit main content block & chart container */
+    /* 컨테이너 스타일 (흰색 카드 느낌) */
+    .st-emotion-cache-z5fcl4, .st-emotion-cache-1c7y2vl {
         max-width: 1200px;
-        margin: 20px auto;
-        background-color: #FFFFFF; /* 흰색 배경 */
-        border-radius: 12px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-        padding: 25px;
+        margin: 25px auto;
+        background-color: var(--background-card);
+        border-radius: var(--border-radius-card);
+        box-shadow: 0 10px 30px var(--shadow-light); /* Softer, wider shadow */
+        padding: 35px; /* Increased padding for more breathing room */
+        border: 1px solid var(--border-color);
     }
 
     /* 제목 스타일 */
     h1 {
         text-align: center;
-        color: #2c3e50;
-        margin-bottom: 30px;
+        color: var(--primary-color); /* Use primary color for main title */
+        margin-bottom: 40px;
         font-weight: 700;
+        font-size: 2.5em; /* Larger, more impactful title */
+        letter-spacing: -0.8px;
+        text-shadow: 1px 1px 3px rgba(0,0,0,0.02);
     }
 
     h2 {
-        color: #2c3e50;
-        font-size: 1.6em; /* h2 폰트 크기 조정 */
-        margin-bottom: 20px;
+        color: var(--text-dark);
+        font-size: 1.8em;
+        margin-bottom: 25px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid var(--border-color); /* Clean underline */
+        font-weight: 600;
     }
 
     h3 {
-        color: #2c3e50;
-        font-size: 1.2em; /* h3 폰트 크기 조정 */
-        margin-bottom: 15px;
+        color: var(--text-medium);
+        font-size: 1.3em;
+        margin-bottom: 20px;
+        font-weight: 500;
     }
 
     /* 예측 요약 섹션 스타일 */
     .forecast-summary-st {
         text-align: center;
         margin-bottom: 40px;
-        background-color: #e8f5fd; /* 연한 파란색 배경 */
-        padding: 25px;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+        background-color: #E6F7FF; /* Light blue, slightly more vibrant */
+        padding: 30px;
+        border-radius: var(--border-radius-card);
+        box-shadow: 0 5px 15px var(--shadow-light);
+        border: 1px solid #B3E0FF; /* Matching border */
     }
 
     .forecast-summary-st h2 {
-        color: #2980b9;
-        font-size: 1.6em; /* 요약 h2 폰트 크기 조정 */
-        margin-bottom: 10px;
+        color: var(--primary-color);
+        font-size: 2.2em;
+        margin-bottom: 15px;
+        border-bottom: none;
+        font-weight: 700;
     }
 
     .forecast-summary-st p {
-        font-size: 1.1em; /* 요약 p 폰트 크기 조정 */
-        color: #444;
+        font-size: 1.2em;
+        color: var(--text-medium);
+        margin-bottom: 10px;
     }
 
     .forecast-summary-st .highlight {
-        font-size: 2em; /* 요약 강조 폰트 크기 조정 */
-        font-weight: 700;
-        color: #2980b9;
-        margin: 0 5px;
+        font-size: 2.8em; /* Even larger highlight */
+        font-weight: 800;
+        color: var(--primary-color);
+        margin: 0 10px;
+        text-shadow: 1px 1px 3px rgba(0,0,0,0.1);
     }
 
     /* Streamlit Metric 위젯 스타일 (카드 형태) */
     [data-testid="stMetric"] {
-        background-color: #FFFFFF; /* 흰색 배경 */
-        border-radius: 12px; /* 둥근 모서리 */
-        padding: 20px; /* 패딩 증가 */
-        box-shadow: 0 4px 15px rgba(0,0,0,0.08); /* 그림자 강화 */
+        background-color: var(--background-card);
+        border-radius: var(--border-radius-card);
+        padding: 25px;
+        box-shadow: 0 8px 25px var(--shadow-medium); /* More prominent shadow */
         text-align: center;
-        margin-bottom: 20px; /* 카드 간 간격 */
-        border: 1px solid #eee; /* 옅은 테두리 */
+        margin-bottom: 25px;
+        border: 1px solid var(--border-color);
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    }
+    [data-testid="stMetric"]:hover {
+        transform: translateY(-7px); /* Lift more on hover */
+        box-shadow: 0 12px 35px var(--shadow-medium); /* Stronger shadow on hover */
     }
     [data-testid="stMetricLabel"] {
-        font-size: 1.1em; /* 라벨 폰트 크기 조정 */
+        font-size: 1.15em;
         font-weight: 600;
-        color: #555;
-        margin-bottom: 8px;
+        color: var(--text-medium);
+        margin-bottom: 12px;
     }
     [data-testid="stMetricValue"] {
-        font-size: 2.5em !important; /* 값 폰트 크기 조정 */
-        font-weight: 700;
-        color: #3498db;
-        margin-top: 5px;
+        font-size: 3.2em !important; /* Significantly larger value */
+        font-weight: 800;
+        color: var(--secondary-color); /* Use secondary color for values */
+        margin-top: 10px;
+        line-height: 1.1;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.05);
     }
     [data-testid="stMetricDelta"] {
-        font-size: 1em; /* 델타 폰트 크기 조정 */
-        color: #28a745; /* 긍정적인 변화 */
-        font-weight: 500;
-        margin-top: 10px;
+        font-size: 1.1em;
+        color: var(--primary-color); /* Use primary color for delta */
+        font-weight: 600;
+        margin-top: 15px;
     }
 
     /* 테이블 스타일 (st.dataframe) */
     .stDataFrame {
-        border-radius: 10px;
+        border-radius: var(--border-radius-card);
         overflow: hidden;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-        margin-bottom: 30px; /* 테이블 하단 여백 */
+        box-shadow: 0 5px 15px var(--shadow-light);
+        margin-bottom: 35px;
+        border: 1px solid var(--border-color);
     }
 
     .stDataFrame table {
-        border-collapse: separate;
-        border-spacing: 0;
-        background-color: #FFFFFF;
+        border-collapse: collapse;
+        background-color: var(--background-card);
+        width: 100%;
     }
 
     .stDataFrame th {
-        background-color: #f2f2f2;
-        font-weight: 600;
-        color: #555;
-        padding: 15px 20px;
+        background-color: #F0F2F6; /* Slightly darker header background */
+        font-weight: 700;
+        color: var(--text-dark);
+        padding: 18px 25px;
         text-align: left;
-        font-size: 1em; /* 테이블 헤더 폰트 크기 조정 */
+        font-size: 1.05em;
+        border-bottom: 2px solid var(--border-color);
     }
 
     .stDataFrame td {
-        padding: 15px 20px;
+        padding: 16px 25px;
         text-align: left;
-        border-bottom: 1px solid #EEE;
-        color: #333; /* 테이블 셀 텍스트 색상 명확히 */
-        font-size: 0.95em; /* 테이블 셀 폰트 크기 조정 */
+        border-bottom: 1px solid #F0F0F0; /* Very light row border */
+        color: var(--text-dark);
+        font-size: 0.98em;
     }
 
     .stDataFrame tbody tr:last-child td {
@@ -456,23 +537,59 @@ st.markdown(
     }
 
     .stDataFrame tbody tr:nth-child(even) {
-        background-color: #FAFAFA;
+        background-color: #FAFAFA; /* Subtle stripe */
     }
 
     .stDataFrame tbody tr:hover {
-        background-color: #E6F7FF;
+        background-color: #EBF5FB; /* Light blue hover */
         cursor: pointer;
         transition: background-color 0.2s ease;
     }
 
     /* 차트 컨테이너 스타일 */
-    .st-emotion-cache-1c7y2vl { /* Streamlit chart container */
-        padding: 20px;
-        background-color: #FFF;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-        margin-bottom: 30px; /* 차트 하단 여백 */
+    .st-emotion-cache-1c7y2vl {
+        padding: 25px;
+        background-color: var(--background-card);
+        border-radius: var(--border-radius-card);
+        box-shadow: 0 8px 25px var(--shadow-medium);
+        margin-bottom: 35px;
+        border: 1px solid var(--border-color);
     }
+
+    /* Sidebar 스타일 */
+    .st-emotion-cache-vk3305 { /* Sidebar container */
+        background-color: var(--background-card);
+        border-right: 1px solid var(--border-color);
+        box-shadow: 2px 0 10px var(--shadow-light);
+        padding: 25px; /* Add padding to sidebar */
+        border-radius: var(--border-radius-card);
+    }
+    .st-emotion-cache-vk3305 h2 {
+        color: var(--text-dark);
+        border-bottom: none;
+        margin-bottom: 25px;
+        font-size: 1.6em;
+    }
+    .st-emotion-cache-vk3305 label {
+        font-weight: 600;
+        color: var(--text-medium);
+        margin-bottom: 8px;
+    }
+
+    /* Horizontal rule (---) style */
+    hr {
+        border-top: 1px solid #D0D0D0; /* Lighter, cleaner horizontal rule */
+        margin: 40px 0; /* More vertical spacing */
+    }
+
+    /* Caption style */
+    .st-emotion-cache-10qj07y { /* Streamlit caption class */
+        text-align: center;
+        color: var(--text-light);
+        font-size: 0.85em;
+        margin-top: 30px;
+    }
+
     </style>
     """,
     unsafe_allow_html=True
@@ -526,10 +643,11 @@ except Exception as e:
     st.error(f"예측기 초기화 또는 학습 중 알 수 없는 오류가 발생했습니다: {e}")
     st.stop()
 
+# 현재 시간은 SalesPredictor 클래스 생성 시 이미 한국 시간으로 설정되어 있음
 now = predictor.current_date
 today_str = now.strftime("%Y-%m-%d")
 
-st.write(f"현재 시간: **{now.strftime('%Y-%m-%d %H:%M:%S')}**")
+st.write(f"현재 시간: **{now.strftime('%Y-%m-%d %H:%M:%S (KST)')}**") # KST 추가
 st.markdown("---")
 
 # --- 주요 정보 카드 (대시보드 상단) ---
@@ -588,7 +706,11 @@ if not predicted_sales_today_df.empty:
 
     # 시간대별 청약 건수 그래프 (곡선)
     st.subheader("시간대별 청약 건수 그래프")
-    st.line_chart(predicted_sales_today_df.set_index('시간대')['예측값'])
+    # 그래프 X축 순서가 맞도록 '시간대'를 숫자로 변환 후 정렬하거나, 'ds'를 인덱스로 사용
+    predicted_sales_today_df['시간_정렬'] = predicted_sales_today_df['ds'].dt.hour
+    chart_data = predicted_sales_today_df.sort_values('시간_정렬').set_index('시간대')['예측값']
+    st.line_chart(chart_data)
+
 else:
     st.write("오늘 예측 데이터가 없습니다.")
 
@@ -600,9 +722,10 @@ st.header(f"🗓️ {now.month}월 말일까지 일별 청약 건수 예측")
 current_year = now.year
 current_month = now.month
 last_day = monthrange(current_year, current_month)[1]
-end_of_month = datetime(current_year, current_month, last_day)
+# end_of_month는 naive datetime으로 생성하여 predict 함수에 전달
+end_of_month = datetime(current_year, current_month, last_day, 23, 59, 59) # 시분초 포함
 
-daily_predictions = predictor.predict(start_date=now, end_date=end_of_month, today_full_day_estimated_sales=today_full_day_estimated_sales)
+daily_predictions = predictor.predict(start_date=now.replace(tzinfo=None), end_date=end_of_month, today_full_day_estimated_sales=today_full_day_estimated_sales)
 
 if not daily_predictions.empty:
     cumulative_sales = today_23hr_cumulative_sales if 'today_23hr_cumulative_sales' in locals() else predictor.current_month_actual
