@@ -182,10 +182,13 @@ class SalesPredictor:
 
     def predict(self, start_date, end_date, today_full_day_estimated_sales=None):
         """지정된 기간 동안 예측 수행 (실제 데이터가 있으면 우선 사용)"""
-        # start_date와 end_date를 KST로 타임존 설정 후 naive datetime으로 변환 (Prophet 예측용)
-        # start_date와 end_date는 Streamlit에서 넘어올 때 naive datetime일 수 있으므로, KST로 로컬라이즈 후 naive로 변환
-        start_date_kst = pytz.timezone('Asia/Seoul').localize(start_date.replace(hour=8, minute=0, second=0, microsecond=0))
-        end_date_kst = pytz.timezone('Asia/Seoul').localize(end_date.replace(hour=23, minute=0, second=0, microsecond=0))
+        # start_date와 end_date는 date 객체로 들어오므로, datetime 객체로 변환
+        start_datetime = datetime(start_date.year, start_date.month, start_date.day, 8, 0, 0, 0)
+        end_datetime = datetime(end_date.year, end_date.month, end_date.day, 23, 0, 0, 0)
+
+        # KST로 타임존 설정 후 naive datetime으로 변환 (Prophet 예측용)
+        start_date_kst = pytz.timezone('Asia/Seoul').localize(start_datetime)
+        end_date_kst = pytz.timezone('Asia/Seoul').localize(end_datetime)
 
         future = pd.DataFrame({
             'ds': pd.date_range(start=start_date_kst, end=end_date_kst, freq='h'),
@@ -216,7 +219,8 @@ class SalesPredictor:
         # `current_date`는 KST 타임존 정보를 포함하고 있으므로 `.date()`로 비교
         today_date_obj = self.current_date.date()
 
-        for date_iter in pd.date_range(start=start_date.date(), end=end_date.date(), freq='D'):
+        # start_date와 end_date는 이미 date 객체이므로 .date()를 다시 호출할 필요 없음
+        for date_iter in pd.date_range(start=start_date, end=end_date, freq='D'):
             if date_iter.date() == today_date_obj and today_full_day_estimated_sales is not None:
                 daily_predictions.append({
                     '날짜': date_iter.strftime('%Y-%m-%d'),
@@ -360,52 +364,57 @@ st.markdown(
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800;900&display=swap');
 
     :root {
-        /* 주요 컬러 시스템 */
-        --primary-blue: #2563eb;
-        --primary-blue-light: #3b82f6;
-        --primary-blue-dark: #1d4ed8;
-        --accent-orange: #f59e0b;
-        --accent-orange-light: #fbbf24;
-        --accent-orange-dark: #d97706;
+        /* LINA Primary Colors (inferred from PDF) */
+        --lina-black: #1A1A1A;
+        --lina-dark-blue: #1A437C;
+        --lina-digital-blue: #3498DB; /* Primary blue for highlights, values */
         
-        /* 중성 컬러 */
-        --neutral-50: #f8fafc;
-        --neutral-100: #f1f5f9;
-        --neutral-200: #e2e8f0;
-        --neutral-300: #cbd5e1;
-        --neutral-400: #94a3b8;
-        --neutral-500: #64748b;
-        --neutral-600: #475569;
-        --neutral-700: #334155;
-        --neutral-800: #1e293b;
-        --neutral-900: #0f172a;
+        /* LINA Secondary Color (inferred from PDF) */
+        --lina-yellow: #F39C12; /* Accent color */
+
+        /* LINA Non-Chromatic Colors (inferred from PDF) */
+        --lina-gray: #6C7A89;
+        --lina-light-gray: #D0D3D4;
+        --lina-pale-gray: #EAECEE; /* Very light background for elements */
         
-        /* 텍스트 컬러 */
-        --text-primary: #0f172a;
-        --text-secondary: #334155;
-        --text-tertiary: #64748b;
+        /* Derived Neutral Colors (for consistency with LINA palette) */
+        --neutral-50: #FDFDFD; /* LINA Pale Gray inspired */
+        --neutral-100: #F8F9FA; /* Slightly darker than 50, LINA Light Gray inspired */
+        --neutral-200: #F0F2F5;
+        --neutral-300: #E2E4E8;
+        --neutral-400: #C4C8CC;
+        --neutral-500: #A8AEB2;
+        --neutral-600: #8C9498;
+        --neutral-700: #70787C;
+        --neutral-800: #545C60;
+        --neutral-900: #384044;
+        
+        /* Text Colors */
+        --text-primary: var(--neutral-900);
+        --text-secondary: var(--neutral-700);
+        --text-tertiary: var(--neutral-500);
         --text-inverse: #ffffff;
         
-        /* 배경 컬러 */
+        /* Background Colors */
         --bg-primary: #ffffff;
-        --bg-secondary: #f8fafc;
-        --bg-tertiary: #f1f5f9;
+        --bg-secondary: var(--neutral-50); /* Overall app background */
+        --bg-tertiary: var(--neutral-100); /* For summary cards, etc. */
         --bg-card: #ffffff;
         --bg-overlay: rgba(15, 23, 42, 0.8);
         
-        /* 보더 및 구분선 */
-        --border-primary: #e2e8f0;
-        --border-secondary: #cbd5e1;
-        --border-focus: #2563eb;
+        /* Border & Divider Colors */
+        --border-primary: var(--neutral-200);
+        --border-secondary: var(--neutral-300);
+        --border-focus: var(--lina-digital-blue);
         
-        /* 그림자 */
-        --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-        --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-        --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-        --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        /* Shadows */
+        --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+        --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+        --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
         
-        /* 간격 시스템 */
+        /* Spacing System */
         --spacing-xs: 4px;
         --spacing-sm: 8px;
         --spacing-md: 16px;
@@ -414,14 +423,14 @@ st.markdown(
         --spacing-2xl: 48px;
         --spacing-3xl: 64px;
         
-        /* 보더 라디우스 */
+        /* Border Radius */
         --radius-sm: 6px;
         --radius-md: 8px;
         --radius-lg: 12px;
         --radius-xl: 16px;
         --radius-2xl: 24px;
         
-        /* 타이포그래피 */
+        /* Typography */
         --font-size-xs: 0.75rem;
         --font-size-sm: 0.875rem;
         --font-size-base: 1rem;
@@ -492,7 +501,7 @@ st.markdown(
         transform: translateX(-50%);
         width: 80px;
         height: 4px;
-        background: linear-gradient(90deg, var(--primary-blue), var(--accent-orange));
+        background: linear-gradient(90deg, var(--lina-digital-blue), var(--lina-yellow)); /* LINA colors for gradient */
         border-radius: 2px;
     }
 
@@ -524,7 +533,7 @@ st.markdown(
         transform: translateY(-50%);
         width: 4px;
         height: 24px;
-        background-color: var(--primary-blue);
+        background-color: var(--lina-digital-blue); /* LINA Digital Blue for accent */
         border-radius: 2px;
     }
 
@@ -559,7 +568,7 @@ st.markdown(
     .forecast-summary-st .highlight {
         font-size: var(--font-size-5xl);
         font-weight: 900;
-        color: var(--primary-blue);
+        color: var(--lina-digital-blue); /* LINA Digital Blue for highlight */
         margin: 0 var(--spacing-md);
         display: inline-block;
     }
@@ -594,7 +603,7 @@ st.markdown(
     [data-testid="stMetricValue"] {
         font-size: var(--font-size-4xl) !important;
         font-weight: 800 !important;
-        color: var(--primary-blue) !important;
+        color: var(--lina-digital-blue) !important; /* LINA Digital Blue for metric values */
         margin: var(--spacing-md) 0 !important;
         line-height: var(--line-height-tight) !important;
     }
@@ -617,7 +626,7 @@ st.markdown(
         box-shadow: var(--shadow-md);
         margin-bottom: var(--spacing-2xl);
         border: 1px solid var(--border-primary);
-        background-color: var(--bg-card);
+        background-color: #FFFFFF !important; /* 전체 테이블 배경을 흰색으로 변경 (강제 적용) */
     }
 
     .stDataFrame table {
@@ -627,23 +636,24 @@ st.markdown(
     }
 
     .stDataFrame th {
-        background-color: #EBF5FB; /* 파스텔톤 연한 파란색 배경 */
-        color: var(--text-primary); /* 어두운 텍스트 */
+        background-color: #FFFFFF !important; /* 헤더를 흰색으로 (강제 적용) */
+        color: var(--text-primary);
         font-weight: 600;
         padding: var(--spacing-lg) var(--spacing-xl);
         text-align: left;
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-lg); /* 폰트 크기 증가 */
         letter-spacing: 0.025em;
-        border-bottom: 1px solid var(--border-primary); /* 헤더 하단 보더 유지 */
+        border-bottom: 1px solid var(--border-primary);
     }
 
     .stDataFrame td {
         padding: var(--spacing-md) var(--spacing-xl);
         text-align: left;
-        border-bottom: 1px solid var(--border-primary); /* 일관된 보더 색상 */
+        border-bottom: 1px solid var(--border-primary);
         color: var(--text-primary);
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-base); /* 폰트 크기 증가 */
         font-weight: 500;
+        background-color: #FFFFFF !important; /* 모든 셀의 배경을 흰색으로 (강제 적용) */
     }
 
     .stDataFrame tbody tr:last-child td {
@@ -651,11 +661,11 @@ st.markdown(
     }
 
     .stDataFrame tbody tr:nth-child(even) {
-        background-color: var(--neutral-50); /* 더 연한 스트라이프 */
+        background-color: #FFFFFF !important; /* 줄무늬를 흰색으로 (짝수 행, 강제 적용) */
     }
 
     .stDataFrame tbody tr:hover {
-        background-color: var(--neutral-100); /* 더 미묘한 호버 효과 */
+        background-color: var(--neutral-100); /* 호버 효과는 유지 */
         transition: background-color 0.2s ease;
     }
 
@@ -727,7 +737,7 @@ st.markdown(
 
     /* 버튼 */
     .stButton > button {
-        background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-light) 100%);
+        background: linear-gradient(135deg, var(--lina-digital-blue) 0%, #3498DB 100%); /* LINA Digital Blue for buttons */
         color: var(--text-inverse);
         border: none;
         border-radius: var(--radius-md);
@@ -744,7 +754,7 @@ st.markdown(
     .stButton > button:hover {
         transform: translateY(-1px);
         box-shadow: var(--shadow-md);
-        background: linear-gradient(135deg, var(--primary-blue-dark) 0%, var(--primary-blue) 100%);
+        background: linear-gradient(135deg, var(--lina-dark-blue) 0%, var(--lina-digital-blue) 100%); /* Darker LINA blue on hover */
     }
 
     .stButton > button:active {
@@ -768,7 +778,7 @@ st.markdown(
 
     .stWarning {
         background-color: #fffbeb;
-        border-color: var(--accent-orange);
+        border-color: var(--lina-yellow); /* LINA Yellow for warnings */
         color: #92400e;
     }
 
@@ -797,7 +807,7 @@ st.markdown(
 
     /* 로딩 상태 */
     .stSpinner > div {
-        border-color: var(--primary-blue) !important;
+        border-color: var(--lina-digital-blue) !important; /* LINA Digital Blue for spinner */
         border-right-color: transparent !important;
     }
 
@@ -981,7 +991,7 @@ if not predicted_sales_today_df.empty:
     st.dataframe(predicted_sales_today_df[['날짜', '시간대', '예측값', '누적_건수', '달성율(%)']].style.format({
         '누적_건수': "{:,.0f}",
         '달성율(%)': "{:.1f}%"
-    }), use_container_width=True, hide_index=True, height=(len(predicted_sales_today_df) + 1) * 35 + 3)
+    }), use_container_width=True, hide_index=True, height=(len(predicted_sales_today_df) + 1) * 45 + 3) # 높이 조정
 
     # 시간대별 청약 건수 그래프 (곡선)
     st.subheader("시간대별 청약 건수 그래프")
@@ -1004,7 +1014,8 @@ last_day = monthrange(current_year, current_month)[1]
 # end_of_month는 naive datetime으로 생성하여 predict 함수에 전달
 end_of_month = datetime(current_year, current_month, last_day, 23, 59, 59) # 시분초 포함
 
-daily_predictions = predictor.predict(start_date=now.replace(tzinfo=None), end_date=end_of_month, today_full_day_estimated_sales=today_full_day_estimated_sales)
+# predict 함수에 date 객체를 직접 전달하도록 수정
+daily_predictions = predictor.predict(start_date=now.date(), end_date=end_of_month.date(), today_full_day_estimated_sales=today_full_day_estimated_sales)
 
 if not daily_predictions.empty:
     cumulative_sales = today_23hr_cumulative_sales if 'today_23hr_cumulative_sales' in locals() else predictor.current_month_actual
@@ -1029,7 +1040,7 @@ if not daily_predictions.empty:
         '예측값': "{:,.0f}",
         '누적_건수': "{:,.0f}",
         '달성율(%)': "{:.1f}%"
-    }), use_container_width=True, hide_index=True, height=(len(daily_predictions) + 1) * 35 + 3)
+    }), use_container_width=True, hide_index=True, height=(len(daily_predictions) + 1) * 45 + 3) # 높이 조정
 
     if not daily_predictions.empty:
         total_month_sales_overall = daily_predictions['누적_건수'].iloc[-1]
