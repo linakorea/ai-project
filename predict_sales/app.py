@@ -353,7 +353,7 @@ class SalesPredictor:
                 '시간대': f"{hour}시",
                 '예측값': value_to_use,
                 '누적_건수': current_cumulative_sales,
-                '달성율(%)': (current_cumulative_sales / self.target_sales * 100).round(1),
+                '달성율(%)': round((current_cumulative_sales / self.target_sales * 100), 1),
                 '데이터타입': data_type
             })
 
